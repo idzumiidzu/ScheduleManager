@@ -517,11 +517,13 @@ bot.on('interactionCreate', async (interaction) => {
             }
 
             // 指定されたIDに対応する行を探す
-            const targetRow = rows.find((row, index) => index + 1 === id);  // 1から順番にIDが割り当てられている
+            const targetRow = rows.find((_, index) => index + 1 === id);  // row ではなく index を使う
 
             if (!targetRow) {
                 return interaction.reply({ content: `⚠️ 面接ID ${id} は存在しません。`, flags: 64 });
             }
+
+            console.log(`削除対象行:`, targetRow); // 確認用のログ
 
             // 対象の面接を削除
             db.run("DELETE FROM interviews WHERE rowid = ?", [targetRow.rowid], function (err) {
