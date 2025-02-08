@@ -396,6 +396,7 @@ bot.on('interactionCreate', async (interaction) => {
         const user = interaction.options.getUser('user');
         const datetime = interaction.options.getString('datetime');
 
+        
         // 入力フォーマットの厳密チェック (MM-DD HH:mm)
         const datetimeRegex = /^\d{2}-\d{2} \d{2}:\d{2}$/;
         if (!datetimeRegex.test(datetime)) {
@@ -441,7 +442,7 @@ bot.on('interactionCreate', async (interaction) => {
 
 
     if (interaction.commandName === 'list_interviews') {
-        interaction.deferReply({ flags: 64 }); // 応答を保留
+        await interaction.deferReply({ flags: 64 }); // 応答を保留
 
         // 現在の UTC 時間を取得
         const nowUTC = DateTime.now().toUTC().toISO();
