@@ -471,13 +471,6 @@ bot.on('interactionCreate', async (interaction) => {
                     return interaction.editReply({ content: '❌ 現在登録されている面接はありません。' });
                 }
 
-                // 面接リストの作成
-                interviewList = rows.map((row, index) => ({
-                    id: index + 1, // ID を 1 から振り直し
-                    user: { id: row.user_id },
-                    time: DateTime.fromISO(row.datetime, { zone: 'UTC' }).setZone('Asia/Tokyo') // UTC から JST に変換
-                }));
-
                 // 面接リストの埋め込みメッセージ作成
                 const resultMessageContent = `__**登録されている面接日程**__`;
                 const embed = new EmbedBuilder()
@@ -485,10 +478,11 @@ bot.on('interactionCreate', async (interaction) => {
                     .setTimestamp()
                     .setFooter({ text: '面接の詳細をご確認ください' });
 
-                interviewList.forEach((info) => {
+                rows.forEach((row, index) => {
+                    const time = DateTime.fromISO(row.datetime, { zone: 'UTC' }).setZone('Asia/Tokyo'); // UTC から JST に変換
                     embed.addFields({
-                        name: `ID: ${info.id}`,
-                        value: `- <@${info.user.id}>\n📅 ${info.time.toFormat('yyyy-MM-dd HH:mm')}`,
+                        name: `ID: ${index + 1}`, // IDを1から順番に表示
+                        value: `- <@${row.user_id}>\n📅 ${time.toFormat('yyyy-MM-dd HH:mm')}`,
                         inline: false,
                     });
                 });
@@ -504,6 +498,7 @@ bot.on('interactionCreate', async (interaction) => {
             });
         });
     }
+
 
 
     if (interaction.commandName === 'delete_interview') {
