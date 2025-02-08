@@ -34,7 +34,6 @@ const db = new sqlite3.Database('./interviews.db', (err) => {
     }
 });
 
-
 bot.once('ready', async () => {
     console.log(`Logged in as ${bot.user.tag}`);
 
