@@ -224,10 +224,12 @@ function loadInterviews() {
         console.log("過去の面接データを削除しました。");
 
         // IDの再割り当てを行う
-        reassignInterviewIds().then(() => {
-            console.log("面接IDの再割り当てが完了しました。");
-        }).catch((err) => {
-            console.error("面接IDの再割り当てに失敗:", err);
+        reassignInterviewIds((err) => {
+            if (err) {
+                console.error('IDの再割り当て中にエラーが発生しました:', err);
+                return;
+            }
+            console.log('IDの再割り当てが完了しました');
         });
     });
 }
@@ -239,6 +241,7 @@ function reassignInterviewIds(callback) {
         (err, rows) => {
             if (err) {
                 console.error('面接情報の取得に失敗しました:', err);
+                callback(err);  // エラーが発生した場合はコールバックでエラーを返す
                 return;
             }
 
@@ -252,13 +255,15 @@ function reassignInterviewIds(callback) {
                     (err) => {
                         if (err) {
                             console.error(`ID の更新に失敗しました (rowid: ${row.rowid})`, err);
-                        } else {
-                            completedUpdates++;
-                            // すべての更新が完了したら
-                            if (completedUpdates === totalUpdates) {
-                                console.log('面接 ID の振り直しが完了しました');
-                                callback();  // コールバックを呼び出す
-                            }
+                            callback(err);  // エラーが発生した場合はコールバックでエラーを返す
+                            return;
+                        }
+
+                        completedUpdates++;
+                        // すべての更新が完了したら
+                        if (completedUpdates === totalUpdates) {
+                            console.log('面接 ID の振り直しが完了しました');
+                            callback(null);  // 完了したらコールバックで成功を通知
                         }
                     }
                 );
@@ -266,6 +271,7 @@ function reassignInterviewIds(callback) {
         }
     );
 }
+
 
 
 
@@ -429,11 +435,16 @@ bot.on('interactionCreate', async (interaction) => {
                     return interaction.reply({ content: '❌ 面接の登録に失敗しました。', flags: 64 });
                 }
 
-                // 面接 ID の振り直しを DB 操作後に行う（コールバックベースに修正）
-                reassignInterviewIds(() => {
-                    // JST に変換してユーザーに表示
-                    const formattedReplyTime = DateTime.fromISO(interviewTimeUTC, { zone: 'UTC' }).setZone('Asia/Tokyo');
-                    interaction.reply(`✅ <@${user.id}> さんの面接を ${formattedReplyTime.toFormat('yyyy-MM-dd HH:mm')} に登録しました。`);
+                // 面接 ID の振り直しを DB 操作後に行う
+                reassignInterviewIds((err) => {
+                    if (err) {
+                        console.error('ID 再割り当てエラー:', err);
+                        interaction.reply(`✅ <@${user.id}> さんの面接を登録しましたが、ID の更新に失敗しました。`);
+                    } else {
+                        // ID 更新成功後、面接日時を表示
+                        const formattedReplyTime = DateTime.fromISO(interviewTimeUTC, { zone: 'UTC' }).setZone('Asia/Tokyo');
+                        interaction.reply(`✅ <@${user.id}> さんの面接を ${formattedReplyTime.toFormat('yyyy-MM-dd HH:mm')} に登録しました。`);
+                    }
                 });
             }
         );
