@@ -452,23 +452,41 @@ bot.on('interactionCreate', async (interaction) => {
                 return interaction.editReply({ content: '❌ 現在、登録されている面接はありません。' });
             }
 
-            // 面接データを日時順にソートしてIDを振り直す
-            const interviewList = rows.map((row, index) => ({
-                id: index + 1, // 割り直されたID
-                user: { id: row.user_id },
-                time: DateTime.fromFormat(row.datetime, 'yyyy-MM-dd HH:mm', { zone: 'Asia/Tokyo' }) // JSTでパース
-            })).sort((a, b) => a.time - b.time); // 日時順にソート
+            // 面接データを日時順にソート
+            const interviewList = rows
+                .map((row) => ({
+                    id: row.id, // 登録順のID（元のデータベースID）
+                    user: { id: row.user_id },
+                    time: DateTime.fromFormat(row.datetime, 'yyyy-MM-dd HH:mm', { zone: 'Asia/Tokyo' }) // JSTでパース
+                }))
+                .sort((a, b) => a.time - b.time); // 日時順にソート
 
-            // 削除対象の面接IDを特定
-            const interviewToDelete = interviewList.find(interview => interview.id === interviewId);
+            // 同じ日時の面接に順番をつける
+            let dateGrouped = {};
+            interviewList.forEach((interview, index) => {
+                const dateKey = interview.time.toFormat('yyyy-MM-dd HH:mm'); // 日時のキー
+                if (!dateGrouped[dateKey]) dateGrouped[dateKey] = [];
+                dateGrouped[dateKey].push({ ...interview, sortedIndex: dateGrouped[dateKey].length + 1 }); // 順番をつける
+            });
+
+            // 指定されたIDが日時順で何番目かを確認
+            let interviewToDelete = null;
+            Object.keys(dateGrouped).forEach(dateKey => {
+                dateGrouped[dateKey].forEach((interview) => {
+                    if (interview.sortedIndex === interviewId) {
+                        interviewToDelete = interview;
+                    }
+                });
+            });
+
             if (!interviewToDelete) {
                 return interaction.editReply({ content: `❌ 指定されたID: ${interviewId} は見つかりません。` });
             }
 
             console.log("削除対象:", interviewToDelete);
 
-            // 面接データの削除処理
-            db.run("DELETE FROM interviews WHERE id = ?", [interviewToDelete.id], async function(err) {
+            // 削除対象の面接をデータベースから削除
+            db.run("DELETE FROM interviews WHERE id = ?", [interviewToDelete.id], async function (err) {
                 if (err) {
                     console.error("削除エラー:", err.message);
                     return interaction.editReply({ content: '❌ 面接の削除に失敗しました。' });
