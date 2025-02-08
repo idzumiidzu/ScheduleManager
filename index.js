@@ -507,8 +507,9 @@ bot.on('interactionCreate', async (interaction) => {
 
 
     if (interaction.commandName === 'delete_interview') {
-        const id = interaction.options.getInteger('id');
+        const id = interaction.options.getInteger('id'); // ここでリスト表示されるIDを取得
 
+        // `id` を基にデータを削除
         db.run("DELETE FROM interviews WHERE id = ?", [id], function (err) {
             if (err) {
                 console.error("削除エラー:", err.message);
@@ -522,16 +523,15 @@ bot.on('interactionCreate', async (interaction) => {
             interaction.reply({ content: `✅ 面接ID ${id} を削除しました。`, flags: 64 });
 
             // 削除後にIDを振り直す
-            resetInterviewIds();
+            reassignInterviewIds().then(() => {
+                console.log('面接IDの再割り当てが完了しました');
+            }).catch((err) => {
+                console.error("面接IDの再割り当てに失敗:", err);
+            });
         });
     }
 
-
 });
-
-
-
-
 
 
 bot.login(process.env.DISCORD_TOKEN);
