@@ -3,7 +3,6 @@ const dotenv = require('dotenv');
 const { DateTime } = require('luxon');
 const sqlite3 = require('sqlite3').verbose();
 
-
 dotenv.config();
 
 const bot = new Bot({
@@ -34,7 +33,6 @@ const db = new sqlite3.Database('./interviews.db', (err) => {
         )`);
     }
 });
-
 
 bot.once('ready', async () => {
     console.log(`Logged in as ${bot.user.tag}`);
@@ -76,95 +74,104 @@ bot.once('ready', async () => {
 });
 
 
+// 面接情報をデータベースに保存する関数
+const saveInterview = (user_id, datetime) => {
+    const isoDatetime = DateTime.fromISO(datetime).toISO(); // ISO形式に変換して保存
+
+    db.run('INSERT INTO interviews (user_id, datetime) VALUES (?, ?)', [user_id, isoDatetime], function(err) {
+        if (err) {
+            console.error('面接日時の保存に失敗しました:', err);
+        } else {
+            console.log(`面接が登録されました: ユーザーID: ${user_id}, 面接日時: ${isoDatetime}`);
+        }
+    });
+};
+
 
 // リマインダーを送る関数
-function sendReminder() {
-    const now = DateTime.now().setZone('Asia/Tokyo');
-
-    // 現在時刻以降の面接で、リマインダー未送信のものを取得
-    db.all('SELECT * FROM interviews WHERE reminded = 0 AND datetime >= ?', [now.toISO()], (err, rows) => {
+async function sendReminder() {
+    db.all('SELECT * FROM interviews WHERE reminded = 0', async (err, rows) => {
         if (err) {
             console.error('面接情報の取得に失敗しました:', err);
             return;
         }
 
-        console.log('取得した面接情報:', rows);
+        console.log('取得した面接情報:', rows); // ログ出力
 
-        rows.forEach((row) => {
-            const interviewTime = DateTime.fromISO(row.datetime, { zone: 'Asia/Tokyo' });
-            console.log(`面接日時: ${interviewTime.toFormat('yyyy-MM-dd HH:mm')}`);
+        const now = DateTime.now().setZone('Asia/Tokyo'); // 現在時刻の取得
 
-            // 10分前～開始時刻の範囲ならリマインダー送信
+        for (const row of rows) {
+            // `datetime` をカスタムフォーマットでパース
+            const interviewTime = DateTime.fromFormat(row.datetime, 'yyyy-MM-dd HH:mm', { zone: 'Asia/Tokyo' });
+
+            console.log(`面接日時: ${interviewTime.toFormat('yyyy-MM-dd HH:mm')}`); // ログ出力
+
+            // 面接の時間が現在時刻から10分以内で、まだリマインダーが送られていない場合
             if (interviewTime.minus({ minutes: 10 }) <= now && interviewTime > now) {
                 console.log(`リマインダー送信条件を満たしました: ユーザーID: ${row.user_id}, 面接日時: ${interviewTime.toFormat('yyyy-MM-dd HH:mm')}`);
 
-                bot.users.fetch(row.user_id, (userFetchError, user) => {
-                    if (userFetchError) {
-                        console.error(`ユーザー情報の取得に失敗: ${row.user_id}`, userFetchError);
-                        return;
-                    }
+                try {
+                    // ユーザー情報を取得
+                    const user = await bot.users.fetch(row.user_id);
 
                     if (user) {
-                        console.log(`リマインダー送信中: ユーザー名: ${user.username}`);
+                        console.log(`リマインダー送信中: ユーザー名: ${user.username}`); // ログ出力
 
-                        // メッセージフォーマット
+                        // 見やすいメッセージフォーマット
                         const message = `
                         __⏰ **説明会のリマインダーです！**__\n**サーバー名:** いい声界隈\n**日時:** ${interviewTime.toFormat('yyyy/MM/dd HH:mm')}\n\nこの説明会は、もうすぐ実施されます。お忘れなく！
                         `;
+                        await user.send(message);
 
-                        // メッセージを送信
-                        user.send(message, (sendError) => {
-                            if (sendError) {
-                                console.error(`リマインダー送信に失敗: ユーザーID: ${row.user_id}`, sendError);
+                        // 面接結果チャンネルにも通知
+                        const resultChannel = await bot.channels.fetch(INTERVIEW_RESULT_CHANNEL_ID);
+                        if (resultChannel) {
+                            // ユーザー情報を取得
+                            const user = await bot.users.fetch(row.user_id);
+
+                            // Embed の作成
+                            const embed = new EmbedBuilder()
+                                .setColor('#FF5733') // 目立つ色に設定（例: オレンジ）
+                                .setDescription(`**希望者:** <@${row.user_id}> さん\n**面接日時:** ${interviewTime.toFormat('yyyy/MM/dd HH:mm')}`)
+                                .setThumbnail(user.displayAvatarURL()) // 希望者のアイコンをサムネイルとして設定
+                                .setFooter({ text: '準備をお願いします！' })
+                                .setTimestamp(); // 現在の時刻をセット
+
+                            await resultChannel.send({
+                                content: '**⏰ 面接リマインダー**', // タイトル
+                                embeds: [embed] // それに続くEmbed
+                            });
+                        }
+
+                        // remindedフラグを更新
+                        db.run('UPDATE interviews SET reminded = 1 WHERE id = ?', [row.id], (err) => {
+                            if (err) {
+                                console.error('リマインダーの更新に失敗しました:', err);
                             } else {
-                                // 面接結果チャンネルにも通知
-                                bot.channels.fetch(INTERVIEW_RESULT_CHANNEL_ID, (channelError, resultChannel) => {
-                                    if (channelError) {
-                                        console.error('リマインダーチャンネルの取得に失敗:', channelError);
-                                    } else {
-                                        if (resultChannel) {
-                                            const embed = new EmbedBuilder()
-                                                .setColor('#FF5733')
-                                                .setDescription(`**希望者:** <@${row.user_id}> さん\n**面接日時:** ${interviewTime.toFormat('yyyy/MM/dd HH:mm')}`)
-                                                .setThumbnail(user.displayAvatarURL())
-                                                .setFooter({ text: '準備をお願いします！' })
-                                                .setTimestamp();
-
-                                            resultChannel.send({
-                                                content: '**⏰ 面接リマインダー**',
-                                                embeds: [embed],
-                                            });
-                                        }
-                                    }
-                                });
-
-                                // reminded フラグを更新
-                                db.run('UPDATE interviews SET reminded = 1 WHERE id = ?', [row.id], (err) => {
-                                    if (err) {
-                                        console.error('リマインダーの更新に失敗しました:', err);
-                                    } else {
-                                        console.log(`リマインダー送信後に更新完了: 面接ID: ${row.id}`);
-                                    }
-                                });
+                                console.log(`リマインダー送信後に更新完了: 面接ID: ${row.id}`); // ログ出力
                             }
                         });
                     } else {
-                        console.log(`ユーザーが見つかりませんでした: ${row.user_id}`);
+                        console.log(`ユーザーが見つかりませんでした: ${row.user_id}`); // ログ出力
                     }
-                });
+                } catch (err) {
+                    console.error('ユーザー情報の取得に失敗しました:', err);
+                }
             } else {
                 console.log(`リマインダー送信条件未満: ユーザーID: ${row.user_id}, 面接日時: ${interviewTime.toFormat('yyyy-MM-dd HH:mm')}`);
             }
-        });
+        }
     });
+
 }
+
+
 
 // 1分ごとにリマインダーをチェック
 setInterval(() => {
     console.log('リマインダー確認中...');
     sendReminder();
-}, 60 * 1000); // 1分ごとにリマインダーを送る
-
+}, 60 * 1000); // 1分ごとにリマインダーを送るタイミング
 
 
 function containsDateOrTime(content) {
@@ -178,105 +185,20 @@ let interviewList = [];  // 面接情報をIDなしで管理する配列
 
 
 
-// 面接情報をリセットし、新しいIDを振り直す
-function resetInterviewIds() {
-    db.all("SELECT rowid, * FROM interviews ORDER BY datetime ASC", (err, rows) => {
-        if (err) {
-            console.error("IDリセットエラー:", err.message);
-            return;
-        }
-
-        // 面接リストを更新
-        const interviewList = rows.map((row, index) => ({
-            id: index + 1, // 新しいIDは1から順番に設定
-            user: { id: row.user_id },
-            time: DateTime.fromISO(row.datetime, { zone: 'UTC' }).setZone('Asia/Tokyo')
-        }));
-
-        // DB の id を更新
-        let completedUpdates = 0;
-        rows.forEach((row, index) => {
-            db.run("UPDATE interviews SET id = ? WHERE rowid = ?", [index + 1, row.rowid], function (err) {
-                if (err) {
-                    console.error(`ID 更新エラー (rowid: ${row.rowid}):`, err.message);
-                } else {
-                    completedUpdates++;
-                    // すべての更新が完了したらログ出力
-                    if (completedUpdates === rows.length) {
-                        console.log("✅ ID をリセットしました。");
-                        // 必要であれば、面接リストをコンソールに表示したり、次の処理を行うことができます。
-                    }
-                }
-            });
-        });
-    });
-}
-
-
-
-
-
-// 面接情報の読み込みとID振り直し
 function loadInterviews() {
-    const now = DateTime.now().setZone('Asia/Tokyo').toISO();
-
-    db.run("DELETE FROM interviews WHERE datetime < ?", [now], (err) => {
+    db.all("SELECT * FROM interviews", [], (err, rows) => {
         if (err) {
-            console.error("過去の面接データの削除に失敗:", err);
-            return;
+            throw err;
         }
-
-        console.log("過去の面接データを削除しました。");
-
-        // IDの再割り当てを行う
-        reassignInterviewIds((err) => {
-            if (err) {
-                console.error('IDの再割り当て中にエラーが発生しました:', err);
-                return;
-            }
-            console.log('IDの再割り当てが完了しました');
-        });
+        interviewList = rows.map(row => ({
+            id: row.id,
+            user: bot.users.cache.get(row.user_id),
+            time: DateTime.fromISO(row.datetime),
+            reminded: row.reminded === 1 // remindedフラグをDBから取得
+        }));
+        console.log('面接情報がデータベースから読み込まれました');
     });
 }
-
-
-function reassignInterviewIds(callback) {
-    db.all("SELECT rowid, * FROM interviews WHERE datetime >= ? ORDER BY datetime ASC", 
-        [DateTime.now().toUTC().toISO()], 
-        (err, rows) => {
-            if (err) {
-                console.error('面接情報の取得に失敗しました:', err);
-                callback(err);  // エラーが発生した場合はコールバックでエラーを返す
-                return;
-            }
-
-            let completedUpdates = 0;
-            const totalUpdates = rows.length;
-
-            // ID を振り直し
-            rows.forEach((row, index) => {
-                db.run("UPDATE interviews SET id = ? WHERE rowid = ?", 
-                    [index + 1, row.rowid],  // `user_id`ではなく`rowid`を使用
-                    (err) => {
-                        if (err) {
-                            console.error(`ID の更新に失敗しました (rowid: ${row.rowid})`, err);
-                            callback(err);  // エラーが発生した場合はコールバックでエラーを返す
-                            return;
-                        }
-
-                        completedUpdates++;
-                        // すべての更新が完了したら
-                        if (completedUpdates === totalUpdates) {
-                            console.log('面接 ID の振り直しが完了しました');
-                            callback(null);  // 完了したらコールバックで成功を通知
-                        }
-                    }
-                );
-            });
-        }
-    );
-}
-
 
 
 
@@ -407,64 +329,60 @@ bot.on('interactionCreate', async (interaction) => {
         const user = interaction.options.getUser('user');
         const datetime = interaction.options.getString('datetime');
 
-        
-        // 入力フォーマットの厳密チェック (MM-DD HH:mm)
-        const datetimeRegex = /^\d{2}-\d{2} \d{2}:\d{2}$/;
-        if (!datetimeRegex.test(datetime)) {
-            return interaction.reply({ content: '❌ 無効な日時フォーマットです。例: `02-10 15:00`', flags: 64 });
-        }
-
         // 現在の年を取得（日本時間）
         const currentYear = DateTime.now().setZone('Asia/Tokyo').year;
 
         // 入力された日時に現在の年を付与
         let formattedDatetime = `${currentYear}-${datetime}`;
 
-        // JST でパース
+        // Luxon を使って JST でパース
         let interviewTime = DateTime.fromFormat(formattedDatetime, 'yyyy-MM-dd HH:mm', { zone: 'Asia/Tokyo' });
 
         // 過去の日時なら翌年に補正
         if (interviewTime < DateTime.now().setZone('Asia/Tokyo')) {
+            // 面接日時が過去なら翌年に補正
             interviewTime = interviewTime.plus({ years: 1 });
+            formattedDatetime = `${interviewTime.year}-${datetime}`;  // 修正後の年を反映
+            interviewTime = DateTime.fromFormat(formattedDatetime, 'yyyy-MM-dd HH:mm', { zone: 'Asia/Tokyo' });
         }
 
-        // DB に保存する際は UTC に変換
-        const interviewTimeUTC = interviewTime.toUTC().toISO();
+        // 最終的な JST 変換
+        if (!interviewTime.isValid) {
+            return interaction.reply({ content: '❌ 無効な日時フォーマットです。例: 02-10 15:00', flags: 64 });
+        }
 
-        // データベースに保存
+        // データベースに JST 形式で保存
         db.run("INSERT INTO interviews (user_id, datetime) VALUES (?, ?)", 
-            [user.id, interviewTimeUTC], 
+            [user.id, interviewTime.toFormat('yyyy-MM-dd HH:mm')], // JST のまま保存
             function(err) {
                 if (err) {
                     console.error(err.message);
                     return interaction.reply({ content: '❌ 面接の登録に失敗しました。', flags: 64 });
                 }
 
-                // 面接 ID の振り直しを DB 操作後に行う
-                reassignInterviewIds((err) => {
-                    if (err) {
-                        console.error('ID 再割り当てエラー:', err);
-                        interaction.reply(`✅ <@${user.id}> さんの面接を登録しましたが、ID の更新に失敗しました。`);
-                    } else {
-                        // ID 更新成功後、面接日時を表示
-                        const formattedReplyTime = DateTime.fromISO(interviewTimeUTC, { zone: 'UTC' }).setZone('Asia/Tokyo');
-                        interaction.reply(`✅ <@${user.id}> さんの面接を ${formattedReplyTime.toFormat('yyyy-MM-dd HH:mm')} に登録しました。`);
-                    }
+                // 面接リストに追加し、JST のままソート
+                interviewList.push({ id: this.lastID, user: user, time: interviewTime });
+                interviewList.sort((a, b) => a.time.toMillis() - b.time.toMillis());
+
+                // ID を振り直し
+                interviewList.forEach((info, index) => {
+                    info.id = index + 1;
                 });
+
+                // 確認メッセージ
+                interaction.reply(`✅ <@${user.id}> さんの面接を ${interviewTime.toFormat('yyyy-MM-dd HH:mm')} に登録しました。`);
             }
         );
     }
 
 
-
     if (interaction.commandName === 'list_interviews') {
         await interaction.deferReply({ flags: 64 }); // 応答を保留
 
-        // 現在の UTC 時間を取得
-        const nowUTC = DateTime.now().toUTC().toISO();
+        const now = DateTime.now().setZone('Asia/Tokyo').toFormat('yyyy-MM-dd HH:mm'); // JST のまま比較
 
-        // 過去の面接を削除 (UTC ベースで比較)
-        db.run("DELETE FROM interviews WHERE datetime < ?", [nowUTC], function (err) {
+        // 過去の面接を削除
+        db.run("DELETE FROM interviews WHERE datetime < ?", [now], function (err) {
             if (err) {
                 console.error("削除エラー:", err.message);
                 return interaction.editReply({ content: '❌ 面接データの整理に失敗しました。' });
@@ -472,8 +390,8 @@ bot.on('interactionCreate', async (interaction) => {
 
             console.log(`削除された面接数: ${this.changes}`);
 
-            // 削除後、再度面接リストを取得
-            db.all("SELECT id, user_id, datetime FROM interviews WHERE datetime >= ? ORDER BY datetime ASC", [nowUTC], (err, rows) => {
+            // 最新の面接リストを取得
+            db.all("SELECT id, user_id, datetime FROM interviews WHERE datetime >= ? ORDER BY datetime ASC", [now], async (err, rows) => {
                 if (err) {
                     console.error("取得エラー:", err.message);
                     return interaction.editReply({ content: '❌ 面接リストの取得に失敗しました。' });
@@ -483,81 +401,98 @@ bot.on('interactionCreate', async (interaction) => {
                     return interaction.editReply({ content: '❌ 現在登録されている面接はありません。' });
                 }
 
-                // 面接リストの埋め込みメッセージ作成
+                // データベースのデータを面接リストに変換し、時間でソート
+                interviewList = rows.map((row, index) => ({
+                    id: index + 1, // ID を 1 から振り直し
+                    user: { id: row.user_id },
+                    time: DateTime.fromFormat(row.datetime, 'yyyy-MM-dd HH:mm', { zone: 'Asia/Tokyo' }) // JST でそのままパース
+                })).sort((a, b) => a.time - b.time); // 時間でソート
+
                 const resultMessageContent = `__**登録されている面接日程**__`;
                 const embed = new EmbedBuilder()
                     .setColor('#00FF00')
                     .setTimestamp()
                     .setFooter({ text: '面接の詳細をご確認ください' });
 
-                rows.forEach((row, index) => {
-                    const time = DateTime.fromISO(row.datetime, { zone: 'UTC' }).setZone('Asia/Tokyo'); // UTC から JST に変換
+                interviewList.forEach((info) => {
                     embed.addFields({
-                        name: `ID: ${index + 1}`, // IDを1から順番に表示
-                        value: `- <@${row.user_id}>\n📅 ${time.toFormat('yyyy-MM-dd HH:mm')}`,
+                        name: `ID: ${info.id}`,
+                        value: `- <@${info.user.id}>\n📅 ${info.time.toFormat('yyyy-MM-dd HH:mm')}`,
                         inline: false,
                     });
                 });
 
-                bot.channels.fetch(INTERVIEW_RESULT_CHANNEL_ID, (error, resultChannel) => {
-                    if (error) {
-                        console.error("チャンネル送信エラー:", error);
-                        return interaction.editReply({ content: '❌ 面接リストの送信に失敗しました。' });
-                    }
-
-                    resultChannel.send({ content: resultMessageContent, embeds: [embed] }, (err) => {
-                        if (err) {
-                            console.error("チャンネル送信エラー:", err);
-                            return interaction.editReply({ content: '❌ 面接リストの送信に失敗しました。' });
-                        }
-
-                        interaction.editReply({ content: '✅ 面接リストを更新しました。' });
-                    });
-                });
+                const resultChannel = await bot.channels.fetch(INTERVIEW_RESULT_CHANNEL_ID);
+                await resultChannel.send({ content: resultMessageContent, embeds: [embed] });
             });
         });
     }
-
-
-
-
 
     if (interaction.commandName === 'delete_interview') {
-        const id = interaction.options.getInteger('id'); // リストに表示されたID番号を取得
+        await interaction.deferReply({ flags: 64 }); // まず応答を保留
 
-        // IDに基づいて削除対象の面接を取得
-        db.all("SELECT rowid, * FROM interviews ORDER BY datetime ASC", (err, rows) => {
+        const interviewId = interaction.options.getInteger('id'); // 数値として取得
+
+        if (!interviewId) {
+            return interaction.editReply({ content: '❌ 無効なIDです。正しいIDを入力してください。' });
+        }
+
+        console.log("指定されたID:", interviewId);
+
+        // DBから指定IDの面接を検索
+        db.get("SELECT * FROM interviews WHERE id = ?", [interviewId], async (err, row) => {
             if (err) {
-                console.error("面接情報の取得に失敗しました:", err.message);
-                return interaction.reply({ content: "❌ 面接情報の取得に失敗しました。", flags: 64 });
+                console.error("データベース取得エラー:", err.message);
+                return interaction.editReply({ content: '❌ 面接データの取得に失敗しました。' });
             }
 
-            // 指定されたIDに対応する行を探す
-            const targetRow = rows.find((_, index) => index + 1 === id);  // row ではなく index を使う
+            if (!row) {
+                console.log(`❌ 面接 ID: ${interviewId} は見つかりません。データベース内の面接情報を取得します...`);
 
-            if (!targetRow) {
-                return interaction.reply({ content: `⚠️ 面接ID ${id} は存在しません。`, flags: 64 });
+                // データベース内の全面接情報を取得して表示
+                db.all("SELECT * FROM interviews", [], (err, rows) => {
+                    if (err) {
+                        console.error("データベースの全面接情報の取得に失敗:", err.message);
+                        return interaction.editReply({ content: '❌ データベースの取得に失敗しました。' });
+                    }
+
+                    if (rows.length === 0) {
+                        console.log("📂 データベースに面接情報はありません。");
+                        return interaction.editReply({ content: '❌ 現在、登録されている面接はありません。' });
+                    }
+
+                    // 既存の面接情報をリストとして表示
+                    console.log("📌 データベースに存在する面接一覧:");
+                    const interviewList = rows.map(r => `🆔 ID: ${r.id}, 📅 日時: ${r.datetime}, 👤 希望者: <@${r.user_id}>`).join("\n");
+
+                    console.log(interviewList);
+
+                    return interaction.editReply({ content: `❌ 指定された面接が見つかりません。\n📌 **データベースに存在する面接一覧:**\n${interviewList}` });
+                });
+
+                return;
             }
 
-            console.log(`削除対象行:`, targetRow); // 確認用のログ
+            console.log("削除対象:", row);
 
-            // 対象の面接を削除
-            db.run("DELETE FROM interviews WHERE rowid = ?", [targetRow.rowid], function (err) {
+            // 面接データの削除処理
+            db.run("DELETE FROM interviews WHERE id = ?", [interviewId], async function(err) {
                 if (err) {
                     console.error("削除エラー:", err.message);
-                    return interaction.reply({ content: "❌ 面接の削除に失敗しました。", flags: 64 });
+                    return interaction.editReply({ content: '❌ 面接の削除に失敗しました。' });
                 }
 
-                interaction.reply({ content: `✅ 面接ID ${id} を削除しました。`, flags: 64 });
-
-                // 削除後にIDを振り直す
-                resetInterviewIds();
+                console.log(`✅ 面接 ID: ${interviewId} を削除しました。`);
+                await interaction.editReply(`✅ 面接 ID: ${interviewId} を削除しました。\n対象: <@${row.user_id}> さん\n日時: ${row.datetime}`);
             });
         });
     }
 
-
 });
+
+
+
+
 
 
 bot.login(process.env.DISCORD_TOKEN);
