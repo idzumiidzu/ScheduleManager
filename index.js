@@ -430,7 +430,7 @@ bot.on('interactionCreate', async (interaction) => {
     }
 
     if (interaction.commandName === 'delete_interview') {
-        await interaction.deferReply({ flags: 64 }); // まず応答を保留
+        await interaction.deferReply({ flags: 64 }); // 応答を保留
 
         const interviewId = interaction.options.getInteger('id'); // 数値として取得
 
@@ -440,54 +440,53 @@ bot.on('interactionCreate', async (interaction) => {
 
         console.log("指定されたID:", interviewId);
 
-        // DBから指定IDの面接を検索
-        db.get("SELECT * FROM interviews WHERE id = ?", [interviewId], async (err, row) => {
+        // DBからすべての面接データを取得
+        db.all("SELECT * FROM interviews", [], async (err, rows) => {
             if (err) {
                 console.error("データベース取得エラー:", err.message);
                 return interaction.editReply({ content: '❌ 面接データの取得に失敗しました。' });
             }
 
-            if (!row) {
-                console.log(`❌ 面接 ID: ${interviewId} は見つかりません。データベース内の面接情報を取得します...`);
-
-                // データベース内の全面接情報を取得して表示
-                db.all("SELECT * FROM interviews", [], (err, rows) => {
-                    if (err) {
-                        console.error("データベースの全面接情報の取得に失敗:", err.message);
-                        return interaction.editReply({ content: '❌ データベースの取得に失敗しました。' });
-                    }
-
-                    if (rows.length === 0) {
-                        console.log("📂 データベースに面接情報はありません。");
-                        return interaction.editReply({ content: '❌ 現在、登録されている面接はありません。' });
-                    }
-
-                    // 既存の面接情報をリストとして表示
-                    console.log("📌 データベースに存在する面接一覧:");
-                    const interviewList = rows.map(r => `🆔 ID: ${r.id}, 📅 日時: ${r.datetime}, 👤 希望者: <@${r.user_id}>`).join("\n");
-
-                    console.log(interviewList);
-
-                    return interaction.editReply({ content: `❌ 指定された面接が見つかりません。\n📌 **データベースに存在する面接一覧:**\n${interviewList}` });
-                });
-
-                return;
+            if (rows.length === 0) {
+                console.log("📂 データベースに面接情報はありません。");
+                return interaction.editReply({ content: '❌ 現在、登録されている面接はありません。' });
             }
 
-            console.log("削除対象:", row);
+            // 面接リストを時間順にソートしてIDを振り直す
+            const interviewList = rows
+                .map((row, index) => ({
+                    id: index + 1, // IDを1から振り直し
+                    user: { id: row.user_id },
+                    time: DateTime.fromFormat(row.datetime, 'yyyy-MM-dd HH:mm', { zone: 'Asia/Tokyo' }) // JSTでパース
+                }))
+                .sort((a, b) => a.time - b.time); // 時間でソート
+
+            // 指定IDが存在するかを確認
+            const interviewToDelete = interviewList.find(interview => interview.id === interviewId);
+
+            if (!interviewToDelete) {
+                console.log(`❌ 面接 ID: ${interviewId} は見つかりません。`);
+                // 再ソートした面接リストを表示
+                const interviewListDisplay = interviewList.map(i => `🆔 ID: ${i.id}, 📅 日時: ${i.time.toFormat('yyyy-MM-dd HH:mm')}, 👤 希望者: <@${i.user.id}>`).join("\n");
+
+                return interaction.editReply({ content: `❌ 指定された面接が見つかりません。\n📌 **データベースに存在する面接一覧:**\n${interviewListDisplay}` });
+            }
+
+            console.log("削除対象:", interviewToDelete);
 
             // 面接データの削除処理
-            db.run("DELETE FROM interviews WHERE id = ?", [interviewId], async function(err) {
+            db.run("DELETE FROM interviews WHERE id = ?", [interviewToDelete.id], async function(err) {
                 if (err) {
                     console.error("削除エラー:", err.message);
                     return interaction.editReply({ content: '❌ 面接の削除に失敗しました。' });
                 }
 
                 console.log(`✅ 面接 ID: ${interviewId} を削除しました。`);
-                await interaction.editReply(`✅ 面接 ID: ${interviewId} を削除しました。\n対象: <@${row.user_id}> さん\n日時: ${row.datetime}`);
+                await interaction.editReply(`✅ 面接 ID: ${interviewId} を削除しました。\n対象: <@${interviewToDelete.user.id}> さん\n日時: ${interviewToDelete.time.toFormat('yyyy-MM-dd HH:mm')}`);
             });
         });
     }
+
 
 });
 
