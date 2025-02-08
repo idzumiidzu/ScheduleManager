@@ -73,19 +73,6 @@ bot.once('ready', async () => {
     loadInterviews();
 });
 
-const db = new sqlite3.Database('./interviews.db', (err) => {
-    if (err) {
-        console.error('データベースの接続に失敗しました:', err);
-    } else {
-        console.log('データベースに接続しました');
-        db.run(`CREATE TABLE IF NOT EXISTS interviews (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id TEXT,
-            datetime TEXT,
-            reminded INTEGER DEFAULT 0
-        )`);
-    }
-});
 
 // 面接情報をデータベースに保存する関数
 const saveInterview = (user_id, datetime) => {
