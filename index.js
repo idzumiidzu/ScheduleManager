@@ -117,13 +117,36 @@ async function sendReminder() {
                     if (user) {
                         console.log(`リマインダー送信中: ユーザー名: ${user.username}`); // ログ出力
 
-                        // ユーザーにDM送信
-                        await user.send(`面接がもうすぐです！日時: ${interviewTime.toFormat('yyyy/MM/dd HH:mm')}`);
+                        // 見やすいメッセージフォーマット
+                        const message = `
+                        ⏰ **面接のリマインダーです！**\n
+
+                        **サーバー名:** いい声界隈\n
+                        **面接日時:** ${interviewTime.toFormat('yyyy/MM/dd HH:mm')}\n\n
+
+                        この面接は、もうすぐ実施されます。お忘れなく！
+                        `;
+                        await user.send(message);
 
                         // 面接結果チャンネルにも通知
                         const resultChannel = await bot.channels.fetch(INTERVIEW_RESULT_CHANNEL_ID);
                         if (resultChannel) {
-                            await resultChannel.send(`⏰ 面接がもうすぐです！日時: ${interviewTime.toFormat('yyyy/MM/dd HH:mm')}`);
+                            // ユーザー情報を取得
+                            const user = await bot.users.fetch(row.user_id);
+
+                            // Embed の作成
+                            const embed = new EmbedBuilder()
+                                .setColor('#FF5733') // 目立つ色に設定（例: オレンジ）
+                                .setDescription(`**希望者:** <@${row.user_id}> さん\n**面接日時:** ${interviewTime.toFormat('yyyy/MM/dd HH:mm')}`)
+                                .setThumbnail(user.displayAvatarURL()) // 希望者のアイコンをサムネイルとして設定
+                                .setFooter({ text: 'もうすぐ面接がありますので、準備をお願いします！' })
+                                .setTimestamp(); // 現在の時刻をセット
+
+                            // ⏰ 面接リマインダー タイトルは Embed の外に出す
+                            await resultChannel.send('⏰ 面接リマインダー'); // タイトルをEmbedの外で送信
+
+                            // Embed の送信
+                            await resultChannel.send({ embeds: [embed] });
                         }
 
                         // remindedフラグを更新
