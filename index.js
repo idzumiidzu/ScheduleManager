@@ -70,9 +70,50 @@ bot.once('ready', async () => {
     // コマンドを登録
     await bot.application.commands.set(commands);
     console.log("コマンドが正常に登録されました");
-    startReminderScheduler();
     loadInterviews();
 });
+
+const sendReminder = () => {
+    // 現在の時刻
+    const now = DateTime.now();
+
+    // 面接情報を取得（まだリマインダーが送られていないもの）
+    db.all('SELECT * FROM interviews WHERE reminded = 0', (err, rows) => {
+        if (err) {
+            console.error('面接情報の取得に失敗しました:', err);
+            return;
+        }
+
+        rows.forEach((row) => {
+            const interviewTime = DateTime.fromISO(row.datetime);
+
+            // 面接の時間が現在時刻から10分以内で、まだリマインダーが送られていない場合
+            if (interviewTime.minus({ minutes: 10 }) <= now && interviewTime > now) {
+                // ユーザー情報を取得
+                bot.users.fetch(row.user_id).then((user) => {
+                    if (user) {
+                        // ユーザーにリマインダーを送信
+                        user.send(`面接がもうすぐです！日時: ${interviewTime.toFormat('yyyy/MM/dd HH:mm')}`);
+
+                        // remindedフラグを更新
+                        db.run('UPDATE interviews SET reminded = 1 WHERE id = ?', [row.id], (err) => {
+                            if (err) {
+                                console.error('リマインダーの更新に失敗しました:', err);
+                            } else {
+                                console.log(`リマインダー送信: ユーザーID: ${row.user_id}, 面接日時: ${interviewTime.toFormat('yyyy/MM/dd HH:mm')}`);
+                            }
+                        });
+                    }
+                }).catch(err => {
+                    console.error('ユーザー情報の取得に失敗しました:', err);
+                });
+            }
+        });
+    });
+};
+
+// 1分ごとにリマインダーをチェック
+setInterval(sendReminder, 60 * 1000); // 1分ごとにリマインダーを送るタイミング
 
 function containsDateOrTime(content) {
     const dateOrTimeRegex = /([０-９\d]{1,2}時|[０-９\d]{1,2}じ|今日|明日|いつでも|何時でも|なんじでも|今から|いまから)/;
@@ -377,29 +418,6 @@ bot.on('interactionCreate', async (interaction) => {  // interactionCreate イ�
 
 
 });
-
-
-function startReminderScheduler() {
-    setInterval(async () => {
-        const now = DateTime.now().setZone('Asia/Tokyo').toMillis(); // 日本時間に固定
-        for (const info of interviewList) {
-            // 10分以内に面接が予定されていて、まだリマインダーが送信されていない場合
-            if (info.time.toMillis() - now <= 10 * 60 * 1000 && !info.reminded) {
-                const resultChannel = await bot.channels.fetch(INTERVIEW_RESULT_CHANNEL_ID);
-                await resultChannel.send(`⏰ **リマインダー**: <@${info.user.id}> さんの面接が10分後に予定されています！`);
-
-                // データベースの reminded フラグを更新
-                db.run("UPDATE interviews SET reminded = 1 WHERE id = ?", [info.id], (err) => {
-                    if (err) {
-                        console.error("リマインダー送信後のデータベース更新に失敗しました:", err);
-                    }
-                });
-
-                info.reminded = true; // ローカルのフラグも更新
-            }
-        }
-    }, 60 * 1000); // 1分ごとにチェック
-}
 
 
 
