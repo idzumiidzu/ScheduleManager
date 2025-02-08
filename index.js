@@ -184,28 +184,39 @@ function resetInterviewIds() {
         }
 
         // 面接リストを更新
-        interviewList = rows.map((row, index) => ({
+        const interviewList = rows.map((row, index) => ({
             id: index + 1, // 新しいIDは1から順番に設定
             user: { id: row.user_id },
             time: DateTime.fromISO(row.datetime, { zone: 'UTC' }).setZone('Asia/Tokyo')
         }));
 
-        // DB の ID を更新
+        // DB の id を更新
         const updateQueries = rows.map((row, index) => {
             return new Promise((resolve, reject) => {
-                db.run("UPDATE interviews SET id = ? WHERE rowid = ?", [index + 1, row.rowid], (err) => {
-                    if (err) reject(err);
-                    else resolve();
+                db.run("UPDATE interviews SET id = ? WHERE rowid = ?", [index + 1, row.rowid], function (err) {
+                    if (err) {
+                        console.error(`ID 更新エラー (rowid: ${row.rowid}):`, err.message);
+                        reject(err);
+                    } else {
+                        resolve();
+                    }
                 });
             });
         });
 
         // すべての更新が終わったらログ出力
         Promise.all(updateQueries)
-            .then(() => console.log("✅ ID をリセットしました。"))
-            .catch((err) => console.error("ID 更新エラー:", err.message));
+            .then(() => {
+                console.log("✅ ID をリセットしました。");
+                // 必要であれば、面接リストをコンソールに表示したり、次の処理を行うことができます。
+            })
+            .catch((err) => {
+                console.error("ID 更新エラー:", err.message);
+                // エラーが発生した場合に、適切なエラーメッセージを表示することができます。
+            });
     });
 }
+
 
 
 
@@ -460,7 +471,7 @@ bot.on('interactionCreate', async (interaction) => {
 
             console.log(`削除された面接数: ${this.changes}`);
 
-            // 最新の面接リストを取得
+            // 削除後、再度面接リストを取得
             db.all("SELECT id, user_id, datetime FROM interviews WHERE datetime >= ? ORDER BY datetime ASC", [nowUTC], async (err, rows) => {
                 if (err) {
                     console.error("取得エラー:", err.message);
@@ -498,6 +509,7 @@ bot.on('interactionCreate', async (interaction) => {
             });
         });
     }
+
 
 
 
