@@ -2,7 +2,6 @@ const { Client: Bot, GatewayIntentBits, SlashCommandBuilder, EmbedBuilder } = re
 const dotenv = require('dotenv');
 const { DateTime } = require('luxon');
 const sqlite3 = require('sqlite3').verbose();
-const { promisify } = require('util');
 
 
 dotenv.config();
@@ -36,7 +35,6 @@ const db = new sqlite3.Database('./interviews.db', (err) => {
     }
 });
 
-const dbAll = promisify(db.all.bind(db)); // `db.all` を Promise 化
 
 bot.once('ready', async () => {
     console.log(`Logged in as ${bot.user.tag}`);
@@ -191,31 +189,24 @@ function resetInterviewIds() {
         }));
 
         // DB の id を更新
-        const updateQueries = rows.map((row, index) => {
-            return new Promise((resolve, reject) => {
-                db.run("UPDATE interviews SET id = ? WHERE rowid = ?", [index + 1, row.rowid], function (err) {
-                    if (err) {
-                        console.error(`ID 更新エラー (rowid: ${row.rowid}):`, err.message);
-                        reject(err);
-                    } else {
-                        resolve();
+        let completedUpdates = 0;
+        rows.forEach((row, index) => {
+            db.run("UPDATE interviews SET id = ? WHERE rowid = ?", [index + 1, row.rowid], function (err) {
+                if (err) {
+                    console.error(`ID 更新エラー (rowid: ${row.rowid}):`, err.message);
+                } else {
+                    completedUpdates++;
+                    // すべての更新が完了したらログ出力
+                    if (completedUpdates === rows.length) {
+                        console.log("✅ ID をリセットしました。");
+                        // 必要であれば、面接リストをコンソールに表示したり、次の処理を行うことができます。
                     }
-                });
+                }
             });
         });
-
-        // すべての更新が終わったらログ出力
-        Promise.all(updateQueries)
-            .then(() => {
-                console.log("✅ ID をリセットしました。");
-                // 必要であれば、面接リストをコンソールに表示したり、次の処理を行うことができます。
-            })
-            .catch((err) => {
-                console.error("ID 更新エラー:", err.message);
-                // エラーが発生した場合に、適切なエラーメッセージを表示することができます。
-            });
     });
 }
+
 
 
 
@@ -243,41 +234,37 @@ function loadInterviews() {
 
 
 function reassignInterviewIds() {
-    return new Promise((resolve, reject) => {
-        db.all("SELECT rowid, * FROM interviews WHERE datetime >= ? ORDER BY datetime ASC", 
-            [DateTime.now().toUTC().toISO()], 
-            (err, rows) => {
-                if (err) {
-                    console.error('面接情報の取得に失敗しました:', err);
-                    return reject(err);
-                }
-
-                // ID を振り直し
-                let updates = rows.map((row, index) => {
-                    return new Promise((res, rej) => {
-                        db.run("UPDATE interviews SET id = ? WHERE rowid = ?", 
-                            [index + 1, row.rowid],  // `user_id`ではなく`rowid`を使用
-                            (err) => {
-                                if (err) {
-                                    console.error(`ID の更新に失敗しました (rowid: ${row.rowid})`, err);
-                                    return rej(err);
-                                }
-                                res();
-                            }
-                        );
-                    });
-                });
-
-                Promise.all(updates).then(() => {
-                    console.log('面接 ID の振り直しが完了しました');
-                    resolve();
-                }).catch(reject);
+    db.all("SELECT rowid, * FROM interviews WHERE datetime >= ? ORDER BY datetime ASC", 
+        [DateTime.now().toUTC().toISO()], 
+        (err, rows) => {
+            if (err) {
+                console.error('面接情報の取得に失敗しました:', err);
+                return;
             }
-        );
-    });
+
+            let completedUpdates = 0;
+            const totalUpdates = rows.length;
+
+            // ID を振り直し
+            rows.forEach((row, index) => {
+                db.run("UPDATE interviews SET id = ? WHERE rowid = ?", 
+                    [index + 1, row.rowid],  // `user_id`ではなく`rowid`を使用
+                    (err) => {
+                        if (err) {
+                            console.error(`ID の更新に失敗しました (rowid: ${row.rowid})`, err);
+                        } else {
+                            completedUpdates++;
+                            // すべての更新が完了したら
+                            if (completedUpdates === totalUpdates) {
+                                console.log('面接 ID の振り直しが完了しました');
+                            }
+                        }
+                    }
+                );
+            });
+        }
+    );
 }
-
-
 
 
 
