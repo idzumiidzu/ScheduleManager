@@ -447,7 +447,30 @@ bot.on('interactionCreate', async (interaction) => {
             }
 
             if (!row) {
-                return interaction.editReply({ content: '❌ 指定された面接が見つかりません。正しいIDを入力してください。' });
+                console.log(`❌ 面接 ID: ${interviewId} は見つかりません。データベース内の面接情報を取得します...`);
+
+                // データベース内の全面接情報を取得して表示
+                db.all("SELECT * FROM interviews", [], (err, rows) => {
+                    if (err) {
+                        console.error("データベースの全面接情報の取得に失敗:", err.message);
+                        return interaction.editReply({ content: '❌ データベースの取得に失敗しました。' });
+                    }
+
+                    if (rows.length === 0) {
+                        console.log("📂 データベースに面接情報はありません。");
+                        return interaction.editReply({ content: '❌ 現在、登録されている面接はありません。' });
+                    }
+
+                    // 既存の面接情報をリストとして表示
+                    console.log("📌 データベースに存在する面接一覧:");
+                    const interviewList = rows.map(r => `🆔 ID: ${r.id}, 📅 日時: ${r.datetime}, 👤 希望者: <@${r.user_id}>`).join("\n");
+
+                    console.log(interviewList);
+
+                    return interaction.editReply({ content: `❌ 指定された面接が見つかりません。\n📌 **データベースに存在する面接一覧:**\n${interviewList}` });
+                });
+
+                return;
             }
 
             console.log("削除対象:", row);
@@ -459,11 +482,12 @@ bot.on('interactionCreate', async (interaction) => {
                     return interaction.editReply({ content: '❌ 面接の削除に失敗しました。' });
                 }
 
-                // 成功メッセージを送信
+                console.log(`✅ 面接 ID: ${interviewId} を削除しました。`);
                 await interaction.editReply(`✅ 面接 ID: ${interviewId} を削除しました。\n対象: <@${row.user_id}> さん\n日時: ${row.datetime}`);
             });
         });
     }
+
 });
 
 
