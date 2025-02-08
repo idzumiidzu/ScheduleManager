@@ -233,7 +233,7 @@ function loadInterviews() {
 }
 
 
-function reassignInterviewIds() {
+function reassignInterviewIds(callback) {
     db.all("SELECT rowid, * FROM interviews WHERE datetime >= ? ORDER BY datetime ASC", 
         [DateTime.now().toUTC().toISO()], 
         (err, rows) => {
@@ -257,6 +257,7 @@ function reassignInterviewIds() {
                             // すべての更新が完了したら
                             if (completedUpdates === totalUpdates) {
                                 console.log('面接 ID の振り直しが完了しました');
+                                callback();  // コールバックを呼び出す
                             }
                         }
                     }
@@ -427,15 +428,11 @@ bot.on('interactionCreate', async (interaction) => {
                     return interaction.reply({ content: '❌ 面接の登録に失敗しました。', flags: 64 });
                 }
 
-                // 面接 ID の振り直しを DB 操作後に行う
-                reassignInterviewIds().then(() => {
+                // 面接 ID の振り直しを DB 操作後に行う（コールバックベースに修正）
+                reassignInterviewIds(() => {
                     // JST に変換してユーザーに表示
                     const formattedReplyTime = DateTime.fromISO(interviewTimeUTC, { zone: 'UTC' }).setZone('Asia/Tokyo');
-
                     interaction.reply(`✅ <@${user.id}> さんの面接を ${formattedReplyTime.toFormat('yyyy-MM-dd HH:mm')} に登録しました。`);
-                }).catch(err => {
-                    console.error('ID 再割り当てエラー:', err);
-                    interaction.reply(`✅ <@${user.id}> さんの面接を登録しましたが、ID の更新に失敗しました。`);
                 });
             }
         );
@@ -444,7 +441,7 @@ bot.on('interactionCreate', async (interaction) => {
 
 
     if (interaction.commandName === 'list_interviews') {
-        await interaction.deferReply({ flags: 64 }); // 応答を保留
+        interaction.deferReply({ flags: 64 }); // 応答を保留
 
         // 現在の UTC 時間を取得
         const nowUTC = DateTime.now().toUTC().toISO();
@@ -459,7 +456,7 @@ bot.on('interactionCreate', async (interaction) => {
             console.log(`削除された面接数: ${this.changes}`);
 
             // 削除後、再度面接リストを取得
-            db.all("SELECT id, user_id, datetime FROM interviews WHERE datetime >= ? ORDER BY datetime ASC", [nowUTC], async (err, rows) => {
+            db.all("SELECT id, user_id, datetime FROM interviews WHERE datetime >= ? ORDER BY datetime ASC", [nowUTC], (err, rows) => {
                 if (err) {
                     console.error("取得エラー:", err.message);
                     return interaction.editReply({ content: '❌ 面接リストの取得に失敗しました。' });
@@ -485,17 +482,25 @@ bot.on('interactionCreate', async (interaction) => {
                     });
                 });
 
-                try {
-                    const resultChannel = await bot.channels.fetch(INTERVIEW_RESULT_CHANNEL_ID);
-                    await resultChannel.send({ content: resultMessageContent, embeds: [embed] });
-                    await interaction.editReply({ content: '✅ 面接リストを更新しました。' });
-                } catch (error) {
-                    console.error("チャンネル送信エラー:", error);
-                    interaction.editReply({ content: '❌ 面接リストの送信に失敗しました。' });
-                }
+                bot.channels.fetch(INTERVIEW_RESULT_CHANNEL_ID, (error, resultChannel) => {
+                    if (error) {
+                        console.error("チャンネル送信エラー:", error);
+                        return interaction.editReply({ content: '❌ 面接リストの送信に失敗しました。' });
+                    }
+
+                    resultChannel.send({ content: resultMessageContent, embeds: [embed] }, (err) => {
+                        if (err) {
+                            console.error("チャンネル送信エラー:", err);
+                            return interaction.editReply({ content: '❌ 面接リストの送信に失敗しました。' });
+                        }
+
+                        interaction.editReply({ content: '✅ 面接リストを更新しました。' });
+                    });
+                });
             });
         });
     }
+
 
 
 
