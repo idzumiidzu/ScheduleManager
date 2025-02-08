@@ -185,7 +185,7 @@ function resetInterviewIds() {
 
         // 面接リストを更新
         interviewList = rows.map((row, index) => ({
-            id: index + 1,
+            id: index + 1, // 新しいIDは1から順番に設定
             user: { id: row.user_id },
             time: DateTime.fromISO(row.datetime, { zone: 'UTC' }).setZone('Asia/Tokyo')
         }));
@@ -208,6 +208,7 @@ function resetInterviewIds() {
 }
 
 
+
 // 面接情報の読み込みとID振り直し
 function loadInterviews() {
     const now = DateTime.now().setZone('Asia/Tokyo').toISO();
@@ -218,13 +219,21 @@ function loadInterviews() {
             return;
         }
 
-        resetInterviewIds();
+        console.log("過去の面接データを削除しました。");
+
+        // IDの再割り当てを行う
+        reassignInterviewIds().then(() => {
+            console.log("面接IDの再割り当てが完了しました。");
+        }).catch((err) => {
+            console.error("面接IDの再割り当てに失敗:", err);
+        });
     });
 }
 
+
 function reassignInterviewIds() {
     return new Promise((resolve, reject) => {
-        db.all("SELECT * FROM interviews WHERE datetime >= ? ORDER BY datetime ASC", 
+        db.all("SELECT rowid, * FROM interviews WHERE datetime >= ? ORDER BY datetime ASC", 
             [DateTime.now().toUTC().toISO()], 
             (err, rows) => {
                 if (err) {
@@ -235,11 +244,11 @@ function reassignInterviewIds() {
                 // ID を振り直し
                 let updates = rows.map((row, index) => {
                     return new Promise((res, rej) => {
-                        db.run("UPDATE interviews SET id = ? WHERE user_id = ?", 
-                            [index + 1, row.user_id], 
+                        db.run("UPDATE interviews SET id = ? WHERE rowid = ?", 
+                            [index + 1, row.rowid],  // `user_id`ではなく`rowid`を使用
                             (err) => {
                                 if (err) {
-                                    console.error(`ID の更新に失敗しました (user_id: ${row.user_id})`, err);
+                                    console.error(`ID の更新に失敗しました (rowid: ${row.rowid})`, err);
                                     return rej(err);
                                 }
                                 res();
@@ -256,6 +265,7 @@ function reassignInterviewIds() {
         );
     });
 }
+
 
 
 
