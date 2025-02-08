@@ -119,12 +119,7 @@ async function sendReminder() {
 
                         // 見やすいメッセージフォーマット
                         const message = `
-                        ⏰ **面接のリマインダーです！**\n
-
-                        **サーバー名:** いい声界隈\n
-                        **面接日時:** ${interviewTime.toFormat('yyyy/MM/dd HH:mm')}\n\n
-
-                        この面接は、もうすぐ実施されます。お忘れなく！
+                        ⏰ **面接のリマインダーです！**\n**サーバー名:** いい声界隈\n**面接日時:** ${interviewTime.toFormat('yyyy/MM/dd HH:mm')}\n\nこの面接は、もうすぐ実施されます。お忘れなく！
                         `;
                         await user.send(message);
 
@@ -139,11 +134,11 @@ async function sendReminder() {
                                 .setColor('#FF5733') // 目立つ色に設定（例: オレンジ）
                                 .setDescription(`**希望者:** <@${row.user_id}> さん\n**面接日時:** ${interviewTime.toFormat('yyyy/MM/dd HH:mm')}`)
                                 .setThumbnail(user.displayAvatarURL()) // 希望者のアイコンをサムネイルとして設定
-                                .setFooter({ text: 'もうすぐ面接がありますので、準備をお願いします！' })
+                                .setFooter({ text: '準備をお願いします！' })
                                 .setTimestamp(); // 現在の時刻をセット
 
                             // ⏰ 面接リマインダー タイトルは Embed の外に出す
-                            await resultChannel.send('⏰ 面接リマインダー'); // タイトルをEmbedの外で送信
+                            await resultChannel.send('**⏰ 面接リマインダー**'); // タイトルをEmbedの外で送信
 
                             // Embed の送信
                             await resultChannel.send({ embeds: [embed] });
