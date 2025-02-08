@@ -73,9 +73,37 @@ bot.once('ready', async () => {
     loadInterviews();
 });
 
+const db = new sqlite3.Database('./interviews.db', (err) => {
+    if (err) {
+        console.error('データベースの接続に失敗しました:', err);
+    } else {
+        console.log('データベースに接続しました');
+        db.run(`CREATE TABLE IF NOT EXISTS interviews (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id TEXT,
+            datetime TEXT,
+            reminded INTEGER DEFAULT 0
+        )`);
+    }
+});
+
+// 面接情報をデータベースに保存する関数
+const saveInterview = (user_id, datetime) => {
+    const isoDatetime = DateTime.fromISO(datetime).toISO(); // ISO形式に変換して保存
+
+    db.run('INSERT INTO interviews (user_id, datetime) VALUES (?, ?)', [user_id, isoDatetime], function(err) {
+        if (err) {
+            console.error('面接日時の保存に失敗しました:', err);
+        } else {
+            console.log(`面接が登録されました: ユーザーID: ${user_id}, 面接日時: ${isoDatetime}`);
+        }
+    });
+};
+
+// リマインダーを送る関数
 const sendReminder = () => {
-    // 現在の日本時間
-    const now = DateTime.now().setZone('Asia/Tokyo'); // 日本時間に設定
+    // 現在の時刻（日本時間）
+    const now = DateTime.now().setZone('Asia/Tokyo');  // 日本時間で現在時刻を取得
 
     // 面接情報を取得（まだリマインダーが送られていないもの）
     db.all('SELECT * FROM interviews WHERE reminded = 0', (err, rows) => {
@@ -85,10 +113,7 @@ const sendReminder = () => {
         }
 
         rows.forEach((row) => {
-            const interviewTime = DateTime.fromISO(row.datetime).setZone('Asia/Tokyo'); // 日本時間に設定
-
-            // デバッグ: 面接時刻と現在時刻を表示
-            console.log(`面接日時: ${interviewTime.toISO()}, 現在時刻: ${now.toISO()}`);
+            const interviewTime = DateTime.fromISO(row.datetime).setZone('Asia/Tokyo'); // 面接日時を日本時間に変換
 
             // 面接の時間が現在時刻から10分以内で、まだリマインダーが送られていない場合
             if (interviewTime.minus({ minutes: 10 }) <= now && interviewTime > now) {
@@ -110,12 +135,13 @@ const sendReminder = () => {
                 }).catch(err => {
                     console.error('ユーザー情報の取得に失敗しました:', err);
                 });
-            } else {
-                console.log('リマインダー送信条件に一致しません。');
             }
         });
     });
 };
+
+// 1分ごとにリマインダーをチェック
+setInterval(sendReminder, 60 * 1000); // 1分ごとにリマインダーを送るタイミング
 
 
 // 1分ごとにリマインダーをチェック
@@ -269,8 +295,7 @@ async function updateReactionCount(message) {
 
 
 
-
-bot.on('interactionCreate', async (interaction) => {  // interactionCreate イベントを非同期関数として定義
+bot.on('interactionCreate', async (interaction) => {
     if (!interaction.isCommand()) return;
 
     if (interaction.channel.type === 'DM') {
@@ -281,7 +306,7 @@ bot.on('interactionCreate', async (interaction) => {  // interactionCreate イ�
         const user = interaction.options.getUser('user');
         const datetime = interaction.options.getString('datetime');
 
-        // 現在の年を取得
+        // 現在の年を取得（日本時間）
         const currentYear = DateTime.now().setZone('Asia/Tokyo').year;
 
         // 入力された日時に現在の年を付与
@@ -328,12 +353,10 @@ bot.on('interactionCreate', async (interaction) => {  // interactionCreate イ�
         );
     }
 
-
     if (interaction.commandName === 'list_interviews') {
         await interaction.deferReply({ flags: 64 }); // 応答を保留
 
         const now = DateTime.now().setZone('Asia/Tokyo').toFormat('yyyy-MM-dd HH:mm'); // JST のまま比較
-
 
         // 過去の面接を削除
         db.run("DELETE FROM interviews WHERE datetime < ?", [now], function (err) {
@@ -359,7 +382,7 @@ bot.on('interactionCreate', async (interaction) => {  // interactionCreate イ�
                 interviewList = rows.map((row, index) => ({
                     id: index + 1, // ID を 1 から振り直し
                     user: { id: row.user_id },
-                    time: DateTime.fromFormat(row.datetime, 'yyyy-MM-dd HH:mm') // JST でそのままパース
+                    time: DateTime.fromFormat(row.datetime, 'yyyy-MM-dd HH:mm', { zone: 'Asia/Tokyo' }) // JST でそのままパース
                 })).sort((a, b) => a.time - b.time); // 時間でソート
 
                 const resultMessageContent = `__**登録されている面接日程**__`;
@@ -382,8 +405,6 @@ bot.on('interactionCreate', async (interaction) => {  // interactionCreate イ�
         });
     }
 
-
-
     if (interaction.commandName === 'delete_interview') {
         await interaction.deferReply({ flags: 64 }); // まず応答を保留
 
@@ -394,11 +415,6 @@ bot.on('interactionCreate', async (interaction) => {  // interactionCreate イ�
         }
 
         console.log("指定されたID:", interviewId);
-
-        // デバッグ: 現在の面接データを表示
-        db.all("SELECT * FROM interviews", [], (err, rows) => {
-            console.log("現在のデータ:", rows);
-        });
 
         // DBから指定IDの面接を検索
         db.get("SELECT * FROM interviews WHERE id = ?", [interviewId], async (err, row) => {
@@ -425,9 +441,8 @@ bot.on('interactionCreate', async (interaction) => {  // interactionCreate イ�
             });
         });
     }
-
-
 });
+
 
 
 
