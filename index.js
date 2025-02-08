@@ -310,9 +310,20 @@ bot.on('interactionCreate', async (interaction) => {  // interactionCreate イ�
 
 
     if (interaction.commandName === 'delete_interview') {
-        await interaction.deferReply(); // まず応答を保留
+        await interaction.deferReply({ flags: 64 }); // まず応答を保留
 
-        const interviewId = interaction.options.getInteger('id');
+        const interviewId = interaction.options.getInteger('id'); // 数値として取得
+
+        if (!interviewId) {
+            return interaction.editReply({ content: '❌ 無効なIDです。正しいIDを入力してください。' });
+        }
+
+        console.log("指定されたID:", interviewId);
+
+        // デバッグ: 現在の面接データを表示
+        db.all("SELECT * FROM interviews", [], (err, rows) => {
+            console.log("現在のデータ:", rows);
+        });
 
         // DBから指定IDの面接を検索
         db.get("SELECT * FROM interviews WHERE id = ?", [interviewId], async (err, row) => {
@@ -324,6 +335,8 @@ bot.on('interactionCreate', async (interaction) => {  // interactionCreate イ�
             if (!row) {
                 return interaction.editReply({ content: '❌ 指定された面接が見つかりません。正しいIDを入力してください。' });
             }
+
+            console.log("削除対象:", row);
 
             // 面接データの削除処理
             db.run("DELETE FROM interviews WHERE id = ?", [interviewId], async function(err) {
@@ -338,6 +351,7 @@ bot.on('interactionCreate', async (interaction) => {  // interactionCreate イ�
         });
     }
 
+
 });
 
 
@@ -345,12 +359,14 @@ function startReminderScheduler() {
     setInterval(async () => {
         const now = DateTime.now().toMillis();
         for (const info of interviewList) {
-            if (info.time.toMillis() - now <= 10 * 60 * 1000 && info.time.toMillis() - now > 9 * 60 * 1000) {
+            if (info.time.toMillis() - now <= 10 * 60 * 1000 && !info.reminded) {
                 const resultChannel = await bot.channels.fetch(INTERVIEW_RESULT_CHANNEL_ID);
                 await resultChannel.send(`⏰ **リマインダー**: <@${info.user.id}> さんの面接が10分後に予定されています！`);
+                info.reminded = true; // 通知済みフラグをセット
             }
         }
     }, 60 * 1000);
 }
+
 
 bot.login(process.env.DISCORD_TOKEN);
