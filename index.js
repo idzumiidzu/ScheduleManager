@@ -78,29 +78,31 @@ bot.once('ready', async () => {
 
 
 // リマインダーを送る関数
+function sendReminder() {
+    const now = DateTime.now().setZone('Asia/Tokyo');
 
-
-async function sendReminder() {
-    try {
-        const now = DateTime.now().setZone('Asia/Tokyo');
-
-        // 現在時刻以降の面接で、リマインダー未送信のものを取得
-        const rows = await dbAll('SELECT * FROM interviews WHERE reminded = 0 AND datetime >= ?', [now.toISO()]);
+    // 現在時刻以降の面接で、リマインダー未送信のものを取得
+    db.all('SELECT * FROM interviews WHERE reminded = 0 AND datetime >= ?', [now.toISO()], (err, rows) => {
+        if (err) {
+            console.error('面接情報の取得に失敗しました:', err);
+            return;
+        }
 
         console.log('取得した面接情報:', rows);
 
-        for (const row of rows) {
-            // `datetime` を ISO 8601 形式としてパース
+        rows.forEach((row) => {
             const interviewTime = DateTime.fromISO(row.datetime, { zone: 'Asia/Tokyo' });
-
             console.log(`面接日時: ${interviewTime.toFormat('yyyy-MM-dd HH:mm')}`);
 
             // 10分前～開始時刻の範囲ならリマインダー送信
             if (interviewTime.minus({ minutes: 10 }) <= now && interviewTime > now) {
                 console.log(`リマインダー送信条件を満たしました: ユーザーID: ${row.user_id}, 面接日時: ${interviewTime.toFormat('yyyy-MM-dd HH:mm')}`);
 
-                try {
-                    const user = await bot.users.fetch(row.user_id);
+                bot.users.fetch(row.user_id, (userFetchError, user) => {
+                    if (userFetchError) {
+                        console.error(`ユーザー情報の取得に失敗: ${row.user_id}`, userFetchError);
+                        return;
+                    }
 
                     if (user) {
                         console.log(`リマインダー送信中: ユーザー名: ${user.username}`);
@@ -109,49 +111,52 @@ async function sendReminder() {
                         const message = `
                         __⏰ **説明会のリマインダーです！**__\n**サーバー名:** いい声界隈\n**日時:** ${interviewTime.toFormat('yyyy/MM/dd HH:mm')}\n\nこの説明会は、もうすぐ実施されます。お忘れなく！
                         `;
-                        await user.send(message);
 
-                        // 面接結果チャンネルにも通知
-                        try {
-                            const resultChannel = await bot.channels.fetch(INTERVIEW_RESULT_CHANNEL_ID);
-                            if (resultChannel) {
-                                const embed = new EmbedBuilder()
-                                    .setColor('#FF5733')
-                                    .setDescription(`**希望者:** <@${row.user_id}> さん\n**面接日時:** ${interviewTime.toFormat('yyyy/MM/dd HH:mm')}`)
-                                    .setThumbnail(user.displayAvatarURL())
-                                    .setFooter({ text: '準備をお願いします！' })
-                                    .setTimestamp();
-
-                                await resultChannel.send({
-                                    content: '**⏰ 面接リマインダー**',
-                                    embeds: [embed]
-                                });
-                            }
-                        } catch (channelError) {
-                            console.error('リマインダーチャンネルの取得に失敗:', channelError);
-                        }
-
-                        // reminded フラグを更新
-                        db.run('UPDATE interviews SET reminded = 1 WHERE id = ?', [row.id], (err) => {
-                            if (err) {
-                                console.error('リマインダーの更新に失敗しました:', err);
+                        // メッセージを送信
+                        user.send(message, (sendError) => {
+                            if (sendError) {
+                                console.error(`リマインダー送信に失敗: ユーザーID: ${row.user_id}`, sendError);
                             } else {
-                                console.log(`リマインダー送信後に更新完了: 面接ID: ${row.id}`);
+                                // 面接結果チャンネルにも通知
+                                bot.channels.fetch(INTERVIEW_RESULT_CHANNEL_ID, (channelError, resultChannel) => {
+                                    if (channelError) {
+                                        console.error('リマインダーチャンネルの取得に失敗:', channelError);
+                                    } else {
+                                        if (resultChannel) {
+                                            const embed = new EmbedBuilder()
+                                                .setColor('#FF5733')
+                                                .setDescription(`**希望者:** <@${row.user_id}> さん\n**面接日時:** ${interviewTime.toFormat('yyyy/MM/dd HH:mm')}`)
+                                                .setThumbnail(user.displayAvatarURL())
+                                                .setFooter({ text: '準備をお願いします！' })
+                                                .setTimestamp();
+
+                                            resultChannel.send({
+                                                content: '**⏰ 面接リマインダー**',
+                                                embeds: [embed],
+                                            });
+                                        }
+                                    }
+                                });
+
+                                // reminded フラグを更新
+                                db.run('UPDATE interviews SET reminded = 1 WHERE id = ?', [row.id], (err) => {
+                                    if (err) {
+                                        console.error('リマインダーの更新に失敗しました:', err);
+                                    } else {
+                                        console.log(`リマインダー送信後に更新完了: 面接ID: ${row.id}`);
+                                    }
+                                });
                             }
                         });
                     } else {
                         console.log(`ユーザーが見つかりませんでした: ${row.user_id}`);
                     }
-                } catch (userFetchError) {
-                    console.error(`ユーザー情報の取得に失敗: ${row.user_id}`, userFetchError);
-                }
+                });
             } else {
                 console.log(`リマインダー送信条件未満: ユーザーID: ${row.user_id}, 面接日時: ${interviewTime.toFormat('yyyy-MM-dd HH:mm')}`);
             }
-        }
-    } catch (err) {
-        console.error('面接情報の取得に失敗しました:', err);
-    }
+        });
+    });
 }
 
 // 1分ごとにリマインダーをチェック
