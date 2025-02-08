@@ -424,6 +424,7 @@ bot.on('interactionCreate', async (interaction) => {
 
                 const resultChannel = await bot.channels.fetch(INTERVIEW_RESULT_CHANNEL_ID);
                 await resultChannel.send({ content: resultMessageContent, embeds: [embed] });
+                await interaction.editReply({ content: '✅ 面接リストを更新しました。' });
             });
         });
     }
