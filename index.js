@@ -226,39 +226,59 @@ bot.on('interactionCreate', async (interaction) => {  // interactionCreate イ�
         const user = interaction.options.getUser('user');
         const datetime = interaction.options.getString('datetime');
 
-        const currentYear = DateTime.now().year;
+        // 現在の年を取得
+        const currentYear = DateTime.now().setZone('Asia/Tokyo').year;
+
+        // 入力された日時に現在の年を付与
         let formattedDatetime = `${currentYear}-${datetime}`;
+
+        // Luxon を使って JST でパース
         let interviewTime = DateTime.fromFormat(formattedDatetime, 'yyyy-MM-dd HH:mm', { zone: 'Asia/Tokyo' });
 
-        if (interviewTime < DateTime.now()) {
+        // 過去の日時なら翌年に補正
+        if (interviewTime < DateTime.now().setZone('Asia/Tokyo')) {
             interviewTime = interviewTime.plus({ years: 1 });
             formattedDatetime = `${interviewTime.year}-${datetime}`;
         }
 
+        // 最終的な JST 変換
         interviewTime = DateTime.fromFormat(formattedDatetime, 'yyyy-MM-dd HH:mm', { zone: 'Asia/Tokyo' });
 
+        // 無効な日時ならエラー
         if (!interviewTime.isValid) {
             return interaction.reply({ content: '❌ 無効な日時フォーマットです。例: 02-10 15:00', flags: 64 });
         }
 
-        db.run("INSERT INTO interviews (user_id, datetime) VALUES (?, ?)", [user.id, interviewTime.toISO()], function(err) {
-            if (err) {
-                console.error(err.message);
-                return interaction.reply({ content: '❌ 面接の登録に失敗しました。', flags: 64 });
+        // データベースに JST 形式で保存
+        db.run("INSERT INTO interviews (user_id, datetime) VALUES (?, ?)", 
+            [user.id, interviewTime.toFormat('yyyy-MM-dd HH:mm')], // JST のまま保存
+            function(err) {
+                if (err) {
+                    console.error(err.message);
+                    return interaction.reply({ content: '❌ 面接の登録に失敗しました。', flags: 64 });
+                }
+
+                // 面接リストに追加し、JST のままソート
+                interviewList.push({ id: this.lastID, user: user, time: interviewTime });
+                interviewList.sort((a, b) => a.time.toMillis() - b.time.toMillis());
+
+                // ID を振り直し
+                interviewList.forEach((info, index) => {
+                    info.id = index + 1;
+                });
+
+                // 確認メッセージ
+                interaction.reply(`✅ <@${user.id}> さんの面接を ${interviewTime.toFormat('yyyy-MM-dd HH:mm')} に登録しました。`);
             }
-            interviewList.push({ id: this.lastID, user: user, time: interviewTime });
-            interviewList.sort((a, b) => a.time - b.time);
-            interviewList.forEach((info, index) => {
-                info.id = index + 1;
-            });
-            interaction.reply(`✅ <@${user.id}> さんの面接を ${interviewTime.toFormat('yyyy-MM-dd HH:mm')} に登録しました。`);
-        });
+        );
     }
+
 
     if (interaction.commandName === 'list_interviews') {
         await interaction.deferReply({ flags: 64 }); // 応答を保留
 
-        const now = DateTime.now().setZone('Asia/Tokyo').toISO(); // 現在時刻を JST で取得
+        const now = DateTime.now().setZone('Asia/Tokyo').toFormat('yyyy-MM-dd HH:mm'); // JST のまま比較
+
 
         // 過去の面接を削除
         db.run("DELETE FROM interviews WHERE datetime < ?", [now], function (err) {
@@ -284,7 +304,7 @@ bot.on('interactionCreate', async (interaction) => {  // interactionCreate イ�
                 interviewList = rows.map((row, index) => ({
                     id: index + 1, // ID を 1 から振り直し
                     user: { id: row.user_id },
-                    time: DateTime.fromISO(row.datetime).setZone('Asia/Tokyo') // JST に変換
+                    time: DateTime.fromFormat(row.datetime, 'yyyy-MM-dd HH:mm') // JST でそのままパース
                 })).sort((a, b) => a.time - b.time); // 時間でソート
 
                 const resultMessageContent = `__**登録されている面接日程**__`;
@@ -357,7 +377,7 @@ bot.on('interactionCreate', async (interaction) => {  // interactionCreate イ�
 
 function startReminderScheduler() {
     setInterval(async () => {
-        const now = DateTime.now().toMillis();
+        const now = DateTime.now().setZone('Asia/Tokyo').toMillis(); // 日本時間に固定
         for (const info of interviewList) {
             if (info.time.toMillis() - now <= 10 * 60 * 1000 && !info.reminded) {
                 const resultChannel = await bot.channels.fetch(INTERVIEW_RESULT_CHANNEL_ID);
@@ -367,6 +387,7 @@ function startReminderScheduler() {
         }
     }, 60 * 1000);
 }
+
 
 
 bot.login(process.env.DISCORD_TOKEN);
