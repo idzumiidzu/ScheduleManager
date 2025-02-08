@@ -475,7 +475,7 @@ bot.on('interactionCreate', async (interaction) => {
                 }
 
                 console.log(`✅ 面接 ID: ${targetInterview.id} を削除しました。`);
-                await interaction.editReply(`✅ 面接 ID: ${targetInterview.id} を削除しました。\n対象: <@${targetInterview.user.id}> さん\n日時: ${targetInterview.time.toFormat('yyyy-MM-dd HH:mm')}`);
+                await interaction.editReply(`✅ 面接 ID: ${sortedIndex} を削除しました。\n対象: <@${targetInterview.user.id}>\n日時: ${targetInterview.time.toFormat('yyyy-MM-dd HH:mm')}`);
             });
         });
     }
