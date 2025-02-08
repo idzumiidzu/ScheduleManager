@@ -119,7 +119,7 @@ async function sendReminder() {
 
                         // 見やすいメッセージフォーマット
                         const message = `
-                        ⏰ **面接のリマインダーです！**\n**サーバー名:** いい声界隈\n**面接日時:** ${interviewTime.toFormat('yyyy/MM/dd HH:mm')}\n\nこの面接は、もうすぐ実施されます。お忘れなく！
+                        __⏰ **面接のリマインダーです！**__\n**サーバー名:** いい声界隈\n**面接日時:** ${interviewTime.toFormat('yyyy/MM/dd HH:mm')}\n\nこの面接は、もうすぐ実施されます。お忘れなく！
                         `;
                         await user.send(message);
 
@@ -137,11 +137,10 @@ async function sendReminder() {
                                 .setFooter({ text: '準備をお願いします！' })
                                 .setTimestamp(); // 現在の時刻をセット
 
-                            // ⏰ 面接リマインダー タイトルは Embed の外に出す
-                            await resultChannel.send('**⏰ 面接リマインダー**'); // タイトルをEmbedの外で送信
-
-                            // Embed の送信
-                            await resultChannel.send({ embeds: [embed] });
+                            await resultChannel.send({
+                                content: '**⏰ 面接リマインダー**', // タイトル
+                                embeds: [embed] // それに続くEmbed
+                            });
                         }
 
                         // remindedフラグを更新
