@@ -89,28 +89,35 @@ const saveInterview = (user_id, datetime) => {
 
 // リマインダーを送る関数
 const sendReminder = () => {
-    // 現在の時刻（日本時間）
-    const now = DateTime.now().setZone('Asia/Tokyo');  // 日本時間で現在時刻を取得
+    // 現在の時刻
+    const now = DateTime.now().setZone('Asia/Tokyo'); // 日本時間にセット
 
     console.log('リマインダー送信チェック開始'); // ログ出力
+
     // 面接情報を取得（まだリマインダーが送られていないもの）
     db.all('SELECT * FROM interviews WHERE reminded = 0', (err, rows) => {
         if (err) {
             console.error('面接情報の取得に失敗しました:', err);
             return;
         }
+
         console.log('取得した面接情報:', rows); // ログ出力
 
         rows.forEach((row) => {
-            const interviewTime = DateTime.fromISO(row.datetime).setZone('Asia/Tokyo'); // 面接日時を日本時間に変換
+            // `datetime` をカスタムフォーマットでパース
+            const interviewTime = DateTime.fromFormat(row.datetime, 'yyyy-MM-dd HH:mm', { zone: 'Asia/Tokyo' });
+
             console.log(`面接日時: ${interviewTime.toFormat('yyyy-MM-dd HH:mm')}`); // ログ出力
 
             // 面接の時間が現在時刻から10分以内で、まだリマインダーが送られていない場合
             if (interviewTime.minus({ minutes: 10 }) <= now && interviewTime > now) {
                 console.log(`リマインダー送信条件を満たしました: ユーザーID: ${row.user_id}, 面接日時: ${interviewTime.toFormat('yyyy-MM-dd HH:mm')}`);
+
                 // ユーザー情報を取得
                 bot.users.fetch(row.user_id).then((user) => {
                     if (user) {
+                        console.log(`リマインダー送信中: ユーザー名: ${user.username}`); // ログ出力
+
                         // ユーザーにリマインダーを送信
                         user.send(`面接がもうすぐです！日時: ${interviewTime.toFormat('yyyy/MM/dd HH:mm')}`);
 
@@ -119,21 +126,21 @@ const sendReminder = () => {
                             if (err) {
                                 console.error('リマインダーの更新に失敗しました:', err);
                             } else {
-                                console.log(`リマインダー送信: ユーザーID: ${row.user_id}, 面接日時: ${interviewTime.toFormat('yyyy/MM/dd HH:mm')}`);
+                                console.log(`リマインダー送信後に更新完了: 面接ID: ${row.id}`); // ログ出力
                             }
                         });
+                    } else {
+                        console.log(`ユーザーが見つかりませんでした: ${row.user_id}`); // ログ出力
                     }
                 }).catch(err => {
                     console.error('ユーザー情報の取得に失敗しました:', err);
                 });
-                
+            } else {
+                console.log(`リマインダー送信条件未満: ユーザーID: ${row.user_id}, 面接日時: ${interviewTime.toFormat('yyyy-MM-dd HH:mm')}`);
             }
         });
     });
 };
-
-// 1分ごとにリマインダーをチェック
-setInterval(sendReminder, 60 * 1000); // 1分ごとにリマインダーを送るタイミング
 
 
 // 1分ごとにリマインダーをチェック
@@ -309,14 +316,13 @@ bot.on('interactionCreate', async (interaction) => {
 
         // 過去の日時なら翌年に補正
         if (interviewTime < DateTime.now().setZone('Asia/Tokyo')) {
+            // 面接日時が過去なら翌年に補正
             interviewTime = interviewTime.plus({ years: 1 });
-            formattedDatetime = `${interviewTime.year}-${datetime}`;
+            formattedDatetime = `${interviewTime.year}-${datetime}`;  // 修正後の年を反映
+            interviewTime = DateTime.fromFormat(formattedDatetime, 'yyyy-MM-dd HH:mm', { zone: 'Asia/Tokyo' });
         }
 
         // 最終的な JST 変換
-        interviewTime = DateTime.fromFormat(formattedDatetime, 'yyyy-MM-dd HH:mm', { zone: 'Asia/Tokyo' });
-
-        // 無効な日時ならエラー
         if (!interviewTime.isValid) {
             return interaction.reply({ content: '❌ 無効な日時フォーマットです。例: 02-10 15:00', flags: 64 });
         }
@@ -344,6 +350,7 @@ bot.on('interactionCreate', async (interaction) => {
             }
         );
     }
+
 
     if (interaction.commandName === 'list_interviews') {
         await interaction.deferReply({ flags: 64 }); // 応答を保留
