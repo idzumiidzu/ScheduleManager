@@ -270,7 +270,7 @@ bot.on('interactionCreate', async (interaction) => {  // interactionCreate イ�
             console.log(`削除された面接数: ${this.changes}`);
 
             // 最新の面接リストを取得
-            db.all("SELECT id, user_id, datetime FROM interviews WHERE datetime >= ?", [now], async (err, rows) => {
+            db.all("SELECT id, user_id, datetime FROM interviews WHERE datetime >= ? ORDER BY datetime ASC", [now], async (err, rows) => {
                 if (err) {
                     console.error("取得エラー:", err.message);
                     return interaction.editReply({ content: '❌ 面接リストの取得に失敗しました。' });
@@ -280,12 +280,12 @@ bot.on('interactionCreate', async (interaction) => {  // interactionCreate イ�
                     return interaction.editReply({ content: '❌ 現在登録されている面接はありません。' });
                 }
 
-                // データベースのデータを面接リストに変換
+                // データベースのデータを面接リストに変換し、時間でソート
                 interviewList = rows.map((row, index) => ({
                     id: index + 1, // ID を 1 から振り直し
                     user: { id: row.user_id },
                     time: DateTime.fromISO(row.datetime).setZone('Asia/Tokyo') // JST に変換
-                }));
+                })).sort((a, b) => a.time - b.time); // 時間でソート
 
                 const resultMessageContent = `__**登録されている面接日程**__`;
                 const embed = new EmbedBuilder()
@@ -309,55 +309,35 @@ bot.on('interactionCreate', async (interaction) => {  // interactionCreate イ�
 
 
 
-
-
-
     if (interaction.commandName === 'delete_interview') {
+        await interaction.deferReply(); // まず応答を保留
+
         const interviewId = interaction.options.getInteger('id');
 
-        if (!interviewId || !interviewList.some(interview => interview.id === interviewId)) {
-            return interaction.reply({ content: '❌ 無効なIDです。正しいIDを指定してください。', flags: 64 });
-        }
+        // DBから指定IDの面接を検索
+        db.get("SELECT * FROM interviews WHERE id = ?", [interviewId], async (err, row) => {
+            if (err) {
+                console.error("データベース取得エラー:", err.message);
+                return interaction.editReply({ content: '❌ 面接データの取得に失敗しました。' });
+            }
 
-        const interviewIndex = interviewList.findIndex(interview => interview.id === interviewId);
-        const deletedInterview = interviewList.splice(interviewIndex, 1)[0];
+            if (!row) {
+                return interaction.editReply({ content: '❌ 指定された面接が見つかりません。正しいIDを入力してください。' });
+            }
 
-        bot.on('interactionCreate', async (interaction) => {
-            if (!interaction.isCommand()) return;
-
-            if (interaction.commandName === 'delete_interview') {
-                const interviewId = interaction.options.getInteger('id');
-
-                if (!interviewId || !interviewList.some(interview => interview.id === interviewId)) {
-                    return interaction.reply({ content: '❌ 無効なIDです。正しいIDを指定してください。', flags: 64 });
+            // 面接データの削除処理
+            db.run("DELETE FROM interviews WHERE id = ?", [interviewId], async function(err) {
+                if (err) {
+                    console.error("削除エラー:", err.message);
+                    return interaction.editReply({ content: '❌ 面接の削除に失敗しました。' });
                 }
 
-                // 削除する面接を特定
-                const interviewIndex = interviewList.findIndex(interview => interview.id === interviewId);
-                const deletedInterview = interviewList.splice(interviewIndex, 1)[0]; // 面接を削除
-
-                // DBから削除処理
-                db.run("DELETE FROM interviews WHERE id = ?", [deletedInterview.id], async function(err) {
-                    if (err) {
-                        console.error(err.message);
-                        return interaction.reply({ content: '❌ 面接の削除に失敗しました。', flags: 64 });
-                    }
-
-                    // 面接リストを再ソート
-                    interviewList.sort((a, b) => a.time - b.time);
-
-                    // 再度IDを振り直す
-                    interviewList.forEach((info, index) => {
-                        info.id = index + 1;
-                    });
-
-                    // 非同期で返信を返す
-                    await interaction.reply(`✅ 面接 ID: ${interviewId} を削除しました。\n対象: <@${deletedInterview.user.id}> さん\n日時: ${deletedInterview.time.toFormat('yyyy-MM-dd HH:mm')}`);
-                });
-            }
+                // 成功メッセージを送信
+                await interaction.editReply(`✅ 面接 ID: ${interviewId} を削除しました。\n対象: <@${row.user_id}> さん\n日時: ${row.datetime}`);
+            });
         });
-
     }
+
 });
 
 
@@ -365,7 +345,7 @@ function startReminderScheduler() {
     setInterval(async () => {
         const now = DateTime.now().toMillis();
         for (const info of interviewList) {
-            if (info.time.toMillis() - now <= 10 * 60 * 1000 && info.time.toMillis() - now > 9.5 * 60 * 1000) {
+            if (info.time.toMillis() - now <= 10 * 60 * 1000 && info.time.toMillis() - now > 9 * 60 * 1000) {
                 const resultChannel = await bot.channels.fetch(INTERVIEW_RESULT_CHANNEL_ID);
                 await resultChannel.send(`⏰ **リマインダー**: <@${info.user.id}> さんの面接が10分後に予定されています！`);
             }
