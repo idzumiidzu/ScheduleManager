@@ -118,41 +118,15 @@ async function sendReminder() {
                         console.log(`リマインダー送信中: ユーザー名: ${user.username}`); // ログ出力
 
                         // ユーザーにDM送信
-                        const message = `
-                        ⏰ **説明会のリマインダーです！**
-
-                        **サーバー名:** ${serverName}
-                        **日時:** ${interviewTime.toFormat('yyyy/MM/dd HH:mm')}
-
-                        この説明会は、もうすぐ実施されます。お忘れなく！
-                        `;
-
-                        // ユーザーにDM送信
-                        await user.send(message);
-
+                        await user.send(`面接がもうすぐです！日時: ${interviewTime.toFormat('yyyy/MM/dd HH:mm')}`);
 
                         // 面接結果チャンネルにも通知
                         const resultChannel = await bot.channels.fetch(INTERVIEW_RESULT_CHANNEL_ID);
                         if (resultChannel) {
-                            // ユーザー情報を取得
-                            const user = await bot.users.fetch(row.user_id);
-
-                            // Embed の作成
-                            const embed = new EmbedBuilder()
-                                .setColor('#FF5733') // 目立つ色に設定（例: オレンジ）
-                                .setDescription(`**希望者:** <@${row.user_id}> さん\n**面接日時:** ${interviewTime.toFormat('yyyy/MM/dd HH:mm')}`)
-                                .setThumbnail(user.displayAvatarURL()) // 希望者のアイコンをサムネイルとして設定
-                                .setFooter({ text: 'もうすぐ面接がありますので、準備をお願いします！' })
-                                .setTimestamp(); // 現在の時刻をセット
-
-                            // ⏰ 面接リマインダー タイトルは Embed の外に出す
-                          await resultChannel.send('**⏰ 面接リマインダー**'); // タイトルをEmbedの外で送信
-
-                           // Embed の送信
-                            await resultChannel.send({ embeds: [embed] });
+                            await resultChannel.send(`⏰ 面接がもうすぐです！日時: ${interviewTime.toFormat('yyyy/MM/dd HH:mm')}`);
                         }
 
-                          // remindedフラグを更新
+                        // remindedフラグを更新
                         db.run('UPDATE interviews SET reminded = 1 WHERE id = ?', [row.id], (err) => {
                             if (err) {
                                 console.error('リマインダーの更新に失敗しました:', err);
@@ -166,11 +140,12 @@ async function sendReminder() {
                 } catch (err) {
                     console.error('ユーザー情報の取得に失敗しました:', err);
                 }
-           } else {
-               console.log(`リマインダー送信条件未満: ユーザーID: ${row.user_id}, 面接日時: ${interviewTime.toFormat('yyyy-MM-dd HH:mm')}`);
-          }
+            } else {
+                console.log(`リマインダー送信条件未満: ユーザーID: ${row.user_id}, 面接日時: ${interviewTime.toFormat('yyyy-MM-dd HH:mm')}`);
+            }
         }
     });
+
 }
 
 
