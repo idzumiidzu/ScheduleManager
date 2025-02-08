@@ -430,9 +430,9 @@ bot.on('interactionCreate', async (interaction) => {
     }
 
     if (interaction.commandName === 'delete_interview') {
-        await interaction.deferReply({ flags: 64 }); // 応答を保留
+        await interaction.deferReply({ flags: 64 });
 
-        const interviewId = interaction.options.getInteger('id'); // 数値として取得
+        const interviewId = interaction.options.getInteger('id');
 
         if (!interviewId) {
             return interaction.editReply({ content: '❌ 無効なIDです。正しいIDを入力してください。' });
@@ -440,7 +440,7 @@ bot.on('interactionCreate', async (interaction) => {
 
         console.log("指定されたID:", interviewId);
 
-        // DBからすべての面接を取得して日時順にソート
+        // DBから面接情報を取得し、開始順で並べ替え
         db.all("SELECT * FROM interviews", [], async (err, rows) => {
             if (err) {
                 console.error("データベース取得エラー:", err.message);
@@ -448,55 +448,38 @@ bot.on('interactionCreate', async (interaction) => {
             }
 
             if (rows.length === 0) {
-                console.log("📂 データベースに面接情報はありません。");
                 return interaction.editReply({ content: '❌ 現在、登録されている面接はありません。' });
             }
 
-            // 面接データを日時順にソート
-            const interviewList = rows
-                .map((row) => ({
-                    id: row.id, // 登録順のID（元のデータベースID）
-                    user: { id: row.user_id },
-                    time: DateTime.fromFormat(row.datetime, 'yyyy-MM-dd HH:mm', { zone: 'Asia/Tokyo' }) // JSTでパース
-                }))
-                .sort((a, b) => a.time - b.time); // 日時順にソート
+            // 開始日時で並べ替え
+            const sortedInterviews = rows.map((row) => ({
+                id: row.id,
+                user: { id: row.user_id },
+                time: DateTime.fromFormat(row.datetime, 'yyyy-MM-dd HH:mm', { zone: 'Asia/Tokyo' }) // JST でそのままパース
+            })).sort((a, b) => a.time - b.time); // 時間でソート
 
-            // 同じ日時の面接に順番をつける
-            let dateGrouped = {};
-            interviewList.forEach((interview, index) => {
-                const dateKey = interview.time.toFormat('yyyy-MM-dd HH:mm'); // 日時のキー
-                if (!dateGrouped[dateKey]) dateGrouped[dateKey] = [];
-                dateGrouped[dateKey].push({ ...interview, sortedIndex: dateGrouped[dateKey].length + 1 }); // 順番をつける
-            });
+            // 削除対象の面接を選択
+            const targetInterview = sortedInterviews[interviewId - 1]; // ID は 1 から始まるためインデックスに調整
 
-            // 指定されたIDが日時順で何番目かを確認
-            let interviewToDelete = null;
-            Object.keys(dateGrouped).forEach(dateKey => {
-                dateGrouped[dateKey].forEach((interview) => {
-                    if (interview.sortedIndex === interviewId) {
-                        interviewToDelete = interview;
-                    }
-                });
-            });
-
-            if (!interviewToDelete) {
-                return interaction.editReply({ content: `❌ 指定されたID: ${interviewId} は見つかりません。` });
+            if (!targetInterview) {
+                return interaction.editReply({ content: '❌ 指定されたIDの面接は見つかりません。' });
             }
 
-            console.log("削除対象:", interviewToDelete);
+            console.log("削除対象:", targetInterview);
 
-            // 削除対象の面接をデータベースから削除
-            db.run("DELETE FROM interviews WHERE id = ?", [interviewToDelete.id], async function (err) {
+            // 面接データの削除処理
+            db.run("DELETE FROM interviews WHERE id = ?", [targetInterview.id], async function(err) {
                 if (err) {
                     console.error("削除エラー:", err.message);
                     return interaction.editReply({ content: '❌ 面接の削除に失敗しました。' });
                 }
 
-                console.log(`✅ 面接 ID: ${interviewToDelete.id} を削除しました。`);
-                await interaction.editReply(`✅ 面接 ID: ${interviewToDelete.id} を削除しました。\n対象: <@${interviewToDelete.user.id}> さん\n日時: ${interviewToDelete.time.toFormat('yyyy-MM-dd HH:mm')}`);
+                console.log(`✅ 面接 ID: ${targetInterview.id} を削除しました。`);
+                await interaction.editReply(`✅ 面接 ID: ${targetInterview.id} を削除しました。\n対象: <@${targetInterview.user.id}> さん\n日時: ${targetInterview.time.toFormat('yyyy-MM-dd HH:mm')}`);
             });
         });
     }
+
 
 
 
