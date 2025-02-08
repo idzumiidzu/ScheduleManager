@@ -87,6 +87,9 @@ const sendReminder = () => {
         rows.forEach((row) => {
             const interviewTime = DateTime.fromISO(row.datetime).setZone('Asia/Tokyo'); // 日本時間に設定
 
+            // デバッグ: 面接時刻と現在時刻を表示
+            console.log(`面接日時: ${interviewTime.toISO()}, 現在時刻: ${now.toISO()}`);
+
             // 面接の時間が現在時刻から10分以内で、まだリマインダーが送られていない場合
             if (interviewTime.minus({ minutes: 10 }) <= now && interviewTime > now) {
                 // ユーザー情報を取得
@@ -107,13 +110,20 @@ const sendReminder = () => {
                 }).catch(err => {
                     console.error('ユーザー情報の取得に失敗しました:', err);
                 });
+            } else {
+                console.log('リマインダー送信条件に一致しません。');
             }
         });
     });
 };
 
+
 // 1分ごとにリマインダーをチェック
-setInterval(sendReminder, 60 * 1000); // 1分ごとにリマインダーを送るタイミング
+setInterval(() => {
+    console.log('リマインダー確認中...');
+    sendReminder();
+}, 60 * 1000); // 1分ごとにリマインダーを送るタイミング
+
 
 function containsDateOrTime(content) {
     const dateOrTimeRegex = /([０-９\d]{1,2}時|[０-９\d]{1,2}じ|今日|明日|いつでも|何時でも|なんじでも|今から|いまから)/;
