@@ -507,29 +507,37 @@ bot.on('interactionCreate', async (interaction) => {
 
 
     if (interaction.commandName === 'delete_interview') {
-        const id = interaction.options.getInteger('id'); // ここでリスト表示されるIDを取得
+        const id = interaction.options.getInteger('id'); // リストに表示されたID番号を取得
 
-        // `id` を基にデータを削除
-        db.run("DELETE FROM interviews WHERE id = ?", [id], function (err) {
+        // IDに基づいて削除対象の面接を取得
+        db.all("SELECT rowid, * FROM interviews ORDER BY datetime ASC", (err, rows) => {
             if (err) {
-                console.error("削除エラー:", err.message);
-                return interaction.reply({ content: "❌ 面接の削除に失敗しました。", flags: 64 });
+                console.error("面接情報の取得に失敗しました:", err.message);
+                return interaction.reply({ content: "❌ 面接情報の取得に失敗しました。", flags: 64 });
             }
 
-            if (this.changes === 0) {
+            // 指定されたIDに対応する行を探す
+            const targetRow = rows.find((row, index) => index + 1 === id);  // 1から順番にIDが割り当てられている
+
+            if (!targetRow) {
                 return interaction.reply({ content: `⚠️ 面接ID ${id} は存在しません。`, flags: 64 });
             }
 
-            interaction.reply({ content: `✅ 面接ID ${id} を削除しました。`, flags: 64 });
+            // 対象の面接を削除
+            db.run("DELETE FROM interviews WHERE rowid = ?", [targetRow.rowid], function (err) {
+                if (err) {
+                    console.error("削除エラー:", err.message);
+                    return interaction.reply({ content: "❌ 面接の削除に失敗しました。", flags: 64 });
+                }
 
-            // 削除後にIDを振り直す
-            reassignInterviewIds().then(() => {
-                console.log('面接IDの再割り当てが完了しました');
-            }).catch((err) => {
-                console.error("面接IDの再割り当てに失敗:", err);
+                interaction.reply({ content: `✅ 面接ID ${id} を削除しました。`, flags: 64 });
+
+                // 削除後にIDを振り直す
+                resetInterviewIds();
             });
         });
     }
+
 
 });
 
