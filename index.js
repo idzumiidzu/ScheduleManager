@@ -455,7 +455,7 @@ bot.on('interactionCreate', async (interaction) => {
             // 面接リストを時間順にソートしてIDを振り直す
             const interviewList = rows
                 .map((row, index) => ({
-                    id: index + 1, // IDを1から振り直し
+                    id: row.id, // 元のIDを保持
                     user: { id: row.user_id },
                     time: DateTime.fromFormat(row.datetime, 'yyyy-MM-dd HH:mm', { zone: 'Asia/Tokyo' }) // JSTでパース
                 }))
@@ -486,6 +486,7 @@ bot.on('interactionCreate', async (interaction) => {
             });
         });
     }
+
 
 
 });
