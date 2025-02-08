@@ -28,10 +28,12 @@ const db = new sqlite3.Database('./interviews.db', (err) => {
         db.run(`CREATE TABLE IF NOT EXISTS interviews (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id TEXT,
-            datetime TEXT
+            datetime TEXT,
+            reminded INTEGER DEFAULT 0
         )`);
     }
 });
+
 
 bot.once('ready', async () => {
     console.log(`Logged in as ${bot.user.tag}`);
@@ -92,11 +94,14 @@ function loadInterviews() {
         interviewList = rows.map(row => ({
             id: row.id,
             user: bot.users.cache.get(row.user_id),
-            time: DateTime.fromISO(row.datetime)
+            time: DateTime.fromISO(row.datetime),
+            reminded: row.reminded === 1 // remindedフラグをDBから取得
         }));
         console.log('面接情報がデータベースから読み込まれました');
     });
 }
+
+
 
 bot.on('messageCreate', async (message) => {
     if (message.channel.id === INTERVIEW_REQUEST_CHANNEL_ID && !message.author.bot) {
@@ -379,14 +384,25 @@ function startReminderScheduler() {
     setInterval(async () => {
         const now = DateTime.now().setZone('Asia/Tokyo').toMillis(); // 日本時間に固定
         for (const info of interviewList) {
+            // 10分以内に面接が予定されていて、まだリマインダーが送信されていない場合
             if (info.time.toMillis() - now <= 10 * 60 * 1000 && !info.reminded) {
                 const resultChannel = await bot.channels.fetch(INTERVIEW_RESULT_CHANNEL_ID);
                 await resultChannel.send(`⏰ **リマインダー**: <@${info.user.id}> さんの面接が10分後に予定されています！`);
-                info.reminded = true; // 通知済みフラグをセット
+
+                // データベースの reminded フラグを更新
+                db.run("UPDATE interviews SET reminded = 1 WHERE id = ?", [info.id], (err) => {
+                    if (err) {
+                        console.error("リマインダー送信後のデータベース更新に失敗しました:", err);
+                    }
+                });
+
+                info.reminded = true; // ローカルのフラグも更新
             }
         }
-    }, 60 * 1000);
+    }, 60 * 1000); // 1分ごとにチェック
 }
+
+
 
 
 
