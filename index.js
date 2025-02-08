@@ -92,18 +92,22 @@ const sendReminder = () => {
     // 現在の時刻（日本時間）
     const now = DateTime.now().setZone('Asia/Tokyo');  // 日本時間で現在時刻を取得
 
+    console.log('リマインダー送信チェック開始'); // ログ出力
     // 面接情報を取得（まだリマインダーが送られていないもの）
     db.all('SELECT * FROM interviews WHERE reminded = 0', (err, rows) => {
         if (err) {
             console.error('面接情報の取得に失敗しました:', err);
             return;
         }
+        console.log('取得した面接情報:', rows); // ログ出力
 
         rows.forEach((row) => {
             const interviewTime = DateTime.fromISO(row.datetime).setZone('Asia/Tokyo'); // 面接日時を日本時間に変換
+            console.log(`面接日時: ${interviewTime.toFormat('yyyy-MM-dd HH:mm')}`); // ログ出力
 
             // 面接の時間が現在時刻から10分以内で、まだリマインダーが送られていない場合
             if (interviewTime.minus({ minutes: 10 }) <= now && interviewTime > now) {
+                console.log(`リマインダー送信条件を満たしました: ユーザーID: ${row.user_id}, 面接日時: ${interviewTime.toFormat('yyyy-MM-dd HH:mm')}`);
                 // ユーザー情報を取得
                 bot.users.fetch(row.user_id).then((user) => {
                     if (user) {
@@ -122,6 +126,7 @@ const sendReminder = () => {
                 }).catch(err => {
                     console.error('ユーザー情報の取得に失敗しました:', err);
                 });
+                
             }
         });
     });
