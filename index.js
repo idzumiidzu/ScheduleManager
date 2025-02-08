@@ -322,7 +322,7 @@ async function updateReactionCount(message) {
 bot.on('interactionCreate', async (interaction) => {
     if (!interaction.isCommand()) return;
 
-    if (interaction.channel.type === 'DM') {
+    if (!interaction.guild) { // DMの場合、guildがundefinedになることがある
         return interaction.reply({ content: '❌ このコマンドはDMでは使用できません。サーバー内で試してください。', flags: 64 });
     }
 
