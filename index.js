@@ -440,7 +440,7 @@ bot.on('interactionCreate', async (interaction) => {
 
         console.log("指定されたID:", interviewId);
 
-        // DBからすべての面接データを取得
+        // DBからすべての面接を取得して日時順にソート
         db.all("SELECT * FROM interviews", [], async (err, rows) => {
             if (err) {
                 console.error("データベース取得エラー:", err.message);
@@ -452,24 +452,17 @@ bot.on('interactionCreate', async (interaction) => {
                 return interaction.editReply({ content: '❌ 現在、登録されている面接はありません。' });
             }
 
-            // 面接リストを時間順にソートしてIDを振り直す
-            const interviewList = rows
-                .map((row, index) => ({
-                    id: row.id, // 元のIDを保持
-                    user: { id: row.user_id },
-                    time: DateTime.fromFormat(row.datetime, 'yyyy-MM-dd HH:mm', { zone: 'Asia/Tokyo' }) // JSTでパース
-                }))
-                .sort((a, b) => a.time - b.time); // 時間でソート
+            // 面接データを日時順にソートしてIDを振り直す
+            const interviewList = rows.map((row, index) => ({
+                id: index + 1, // 割り直されたID
+                user: { id: row.user_id },
+                time: DateTime.fromFormat(row.datetime, 'yyyy-MM-dd HH:mm', { zone: 'Asia/Tokyo' }) // JSTでパース
+            })).sort((a, b) => a.time - b.time); // 日時順にソート
 
-            // 指定IDが存在するかを確認
+            // 削除対象の面接IDを特定
             const interviewToDelete = interviewList.find(interview => interview.id === interviewId);
-
             if (!interviewToDelete) {
-                console.log(`❌ 面接 ID: ${interviewId} は見つかりません。`);
-                // 再ソートした面接リストを表示
-                const interviewListDisplay = interviewList.map(i => `🆔 ID: ${i.id}, 📅 日時: ${i.time.toFormat('yyyy-MM-dd HH:mm')}, 👤 希望者: <@${i.user.id}>`).join("\n");
-
-                return interaction.editReply({ content: `❌ 指定された面接が見つかりません。\n📌 **データベースに存在する面接一覧:**\n${interviewListDisplay}` });
+                return interaction.editReply({ content: `❌ 指定されたID: ${interviewId} は見つかりません。` });
             }
 
             console.log("削除対象:", interviewToDelete);
@@ -481,11 +474,12 @@ bot.on('interactionCreate', async (interaction) => {
                     return interaction.editReply({ content: '❌ 面接の削除に失敗しました。' });
                 }
 
-                console.log(`✅ 面接 ID: ${interviewId} を削除しました。`);
-                await interaction.editReply(`✅ 面接 ID: ${interviewId} を削除しました。\n対象: <@${interviewToDelete.user.id}> さん\n日時: ${interviewToDelete.time.toFormat('yyyy-MM-dd HH:mm')}`);
+                console.log(`✅ 面接 ID: ${interviewToDelete.id} を削除しました。`);
+                await interaction.editReply(`✅ 面接 ID: ${interviewToDelete.id} を削除しました。\n対象: <@${interviewToDelete.user.id}> さん\n日時: ${interviewToDelete.time.toFormat('yyyy-MM-dd HH:mm')}`);
             });
         });
     }
+
 
 
 
