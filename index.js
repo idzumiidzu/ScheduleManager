@@ -119,7 +119,7 @@ async function sendReminder() {
 
                         // 見やすいメッセージフォーマット
                         const message = `
-                        __⏰ **説明会のリマインダーです！**__\n**サーバー名:** いい声界隈\n**日時:** ${interviewTime.toFormat('yyyy/MM/dd HH:mm')}\n\nこの説明会は、もうすぐ実施されます。お忘れなく！
+                        __⏰ **説明会のリマインダーです！**__\n**サーバー名:** Heartful\n**日時:** ${interviewTime.toFormat('yyyy/MM/dd HH:mm')}\n\nこの説明会は、もうすぐ実施されます。お忘れなく！
                         `;
                         await user.send(message);
 
