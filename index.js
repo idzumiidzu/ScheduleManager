@@ -175,7 +175,7 @@ setInterval(() => {
 
 
 function containsDateOrTime(content) {
-    const dateOrTimeRegex = /([０-９\d]{1,2}時|[０-９\d]{1,2}じ|今日|明日|いつでも|何時でも|なんじでも|今から|いまから|今で|いまで)/;
+    const dateOrTimeRegex = /([０-９\d]{1,2}時|[０-９\d]{1,2}じ|[０-９\d]{1,2}:|[０-９\d]{1,2}：|今日|明日|いつでも|何時でも|なんじでも|今から|いまから|今で|いまで)/;
     return dateOrTimeRegex.test(content);
 }
 
